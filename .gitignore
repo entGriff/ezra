@@ -1,0 +1,9 @@
+/_build/
+/deps/
+/priv/ezra/
+*.db
+*.db-shm
+*.db-wal
+.elixir_ls/
+erl_crash.dump
+.DS_Store

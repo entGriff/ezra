@@ -1,0 +1,16 @@
+FROM elixir:1.17-otp-27-alpine
+
+# C build tools required by exqlite (SQLite NIF)
+RUN apk add --no-cache build-base git
+
+WORKDIR /app
+
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Fetch dependencies at build time so they are cached in the image layer
+# and seed the mix_deps named volume on first container start.
+# Copying only the manifests here means this layer is only invalidated when
+# mix.exs or mix.lock change - not on every source edit.
+COPY mix.exs mix.lock ./
+RUN mix deps.get

@@ -1,0 +1,28 @@
+FROM ubuntu:22.04
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+
+# Binaries are COPY'd from the build context instead of downloaded from GitHub
+# Releases. This Dockerfile is used only for test/local builds via the
+# build-test.yml workflow. Official images use docker/Dockerfile which pulls
+# the binary from a published release.
+COPY ezra-linux_x86_64 /tmp/
+COPY ezra-linux_arm64  /tmp/
+
+RUN case "$TARGETARCH" in \
+      arm64) cp /tmp/ezra-linux_arm64  /usr/local/bin/ezra ;; \
+      *)     cp /tmp/ezra-linux_x86_64 /usr/local/bin/ezra ;; \
+    esac \
+    && chmod +x /usr/local/bin/ezra
+
+EXPOSE 42002
+
+ENV EZRA_DATA_DIR=/data
+ENV EZRA_PORT=42002
+ENV LANG=C.UTF-8
+
+ENTRYPOINT ["/usr/local/bin/ezra"]

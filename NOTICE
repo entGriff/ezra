@@ -1,0 +1,39 @@
+EZRA
+Copyright (c) 2026 Goga Patarkatsishvili
+
+This software is released under the MIT License. See LICENSE for details.
+
+---
+
+THIRD-PARTY SOFTWARE
+
+EZRA incorporates open-source dependencies. The complete list of packages,
+their versions, and their individual licenses can be found by inspecting
+mix.lock in the source repository at https://github.com/entGriff/ezra
+
+All dependencies use permissive licenses (MIT, Apache 2.0, or ISC). None are
+copyleft or otherwise restrictive.
+
+---
+
+RUNTIME DEPENDENCIES
+
+The following packages are included in distributed binaries and require
+attribution under their respective licenses:
+
+  exqlite       Apache License 2.0    https://hex.pm/packages/exqlite
+  ranch         ISC License           https://hex.pm/packages/ranch
+  telemetry     Apache License 2.0    https://hex.pm/packages/telemetry
+  db_connection Apache License 2.0    https://hex.pm/packages/db_connection
+
+EZRA's standalone binary also embeds the Erlang/OTP runtime, which is
+distributed under the Apache License 2.0:
+
+  Erlang/OTP    Apache License 2.0    https://www.erlang.org
+
+---
+
+BUILD-TIME AND TEST DEPENDENCIES
+
+Dependencies used only during compilation or testing are not included in
+distributed binaries and carry no obligations for end users.

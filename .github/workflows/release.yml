@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # --- Build one binary per native platform ---
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux_x86_64
+            runner: ubuntu-22.04
+          - target: linux_arm64
+            runner: ubuntu-22.04-arm
+          - target: macos_arm64
+            runner: macos-14       # Apple Silicon
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir + OTP
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.17"
+          otp-version: "27"
+
+      # Burrito v1.3.0 hard-requires Zig 0.14.0 exactly - any other version exits 1.
+      - name: Install Zig 0.14.0
+        run: |
+          ZIG_VERSION="0.14.0"
+          # Zig uses "macos" and "linux", not uname values ("Darwin", "Linux")
+          case "$(uname -s)" in
+            Darwin) OS="macos" ;;
+            *)      OS="linux" ;;
+          esac
+          # Zig uses "aarch64", macOS uname reports "arm64"
+          case "$(uname -m)" in
+            arm64|aarch64) ARCH="aarch64" ;;
+            *)             ARCH="x86_64" ;;
+          esac
+          curl -fLo zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-${OS}-${ARCH}-${ZIG_VERSION}.tar.xz"
+          tar -xf zig.tar.xz
+          echo "${PWD}/zig-${OS}-${ARCH}-${ZIG_VERSION}" >> $GITHUB_PATH
+
+      - name: Cache Mix deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build/prod
+          key: ${{ runner.os }}-${{ runner.arch }}-mix-prod-${{ hashFiles('mix.lock') }}
+
+      - name: Install deps
+        run: mix deps.get --only prod
+        env:
+          MIX_ENV: prod
+
+      - name: Compile
+        run: mix compile
+        env:
+          MIX_ENV: prod
+
+      - name: Build Burrito binary
+        run: mix release --overwrite
+        env:
+          MIX_ENV: prod
+          BURRITO_WRAP: "true"
+          BURRITO_TARGET: ${{ matrix.target }}
+
+      # Burrito's CopyRelease step writes the binary as
+      # `burrito_out/<release_name>_<target_alias>` (underscore).
+      # We rename to `<release_name>-<target>` (dash) for a cleaner artifact
+      # name in GitHub Releases, matching the URLs in README.md.
+      - name: Rename artifact
+        run: mv burrito_out/ezra_${{ matrix.target }} burrito_out/ezra-${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ezra-${{ matrix.target }}
+          path: burrito_out/ezra-${{ matrix.target }}
+          if-no-files-found: error
+
+  # --- Collect artifacts and publish GitHub release ---
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/ezra-*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+  # --- Build Docker image and push to GHCR ---
+  # Runs after `release` so both linux binaries are already uploaded before
+  # Dockerfile.ezra tries to curl them.
+  ezra:
+    name: Publish Docker image
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/ezra
+          tags: |
+            type=raw,value=${{ github.ref_name }}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            EZRA_VERSION=${{ github.ref_name }}

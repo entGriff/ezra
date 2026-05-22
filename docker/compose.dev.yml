@@ -1,0 +1,20 @@
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    volumes:
+      - ..:/app
+      - mix_deps:/app/deps
+      - mix_build:/app/_build
+      - mix_cache:/root/.mix
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    environment:
+      - MIX_ENV=test
+
+volumes:
+  mix_deps:
+  mix_build:
+  mix_cache:

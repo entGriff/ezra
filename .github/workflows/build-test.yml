@@ -1,0 +1,151 @@
+name: Test Build
+
+# Triggered manually from the GitHub Actions tab.
+# Pick any branch from the dropdown - the build runs from that branch's HEAD.
+# Produces a GHCR test image tagged with the branch name and commit SHA.
+# Only users with write access to this repository can trigger this workflow.
+#
+# This workflow intentionally does NOT create a GitHub Release.
+# Artifacts expire after 7 days.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # --- Build one binary per native platform ---
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux_x86_64
+            runner: ubuntu-22.04
+          - target: linux_arm64
+            runner: ubuntu-22.04-arm
+          - target: macos_arm64
+            runner: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir + OTP
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.17"
+          otp-version: "27"
+
+      - name: Install Zig 0.14.0
+        run: |
+          ZIG_VERSION="0.14.0"
+          case "$(uname -s)" in
+            Darwin) OS="macos" ;;
+            *)      OS="linux" ;;
+          esac
+          case "$(uname -m)" in
+            arm64|aarch64) ARCH="aarch64" ;;
+            *)             ARCH="x86_64" ;;
+          esac
+          curl -fLo zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-${OS}-${ARCH}-${ZIG_VERSION}.tar.xz"
+          tar -xf zig.tar.xz
+          echo "${PWD}/zig-${OS}-${ARCH}-${ZIG_VERSION}" >> $GITHUB_PATH
+
+      - name: Cache Mix deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build/prod
+          key: ${{ runner.os }}-${{ runner.arch }}-mix-prod-${{ hashFiles('mix.lock') }}
+
+      - name: Install deps
+        run: mix deps.get --only prod
+        env:
+          MIX_ENV: prod
+
+      - name: Compile
+        run: mix compile
+        env:
+          MIX_ENV: prod
+
+      - name: Build Burrito binary
+        run: mix release --overwrite
+        env:
+          MIX_ENV: prod
+          BURRITO_WRAP: "true"
+          BURRITO_TARGET: ${{ matrix.target }}
+
+      - name: Rename artifact
+        run: mv burrito_out/ezra_${{ matrix.target }} burrito_out/ezra-${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ezra-${{ matrix.target }}
+          path: burrito_out/ezra-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # --- Build Docker image from local binaries and push to GHCR ---
+  # Uses docker/Dockerfile.local, which COPYs the Linux binaries from the
+  # build context instead of downloading them from GitHub Releases.
+  docker:
+    name: Build and push test Docker image
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Download Linux artifacts into build context
+        uses: actions/download-artifact@v4
+        with:
+          path: docker/binaries
+          pattern: ezra-linux_*
+          merge-multiple: true
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/binaries
+          file: docker/Dockerfile.local
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/${{ github.repository_owner }}/ezra:test-${{ github.ref_name }}-${{ steps.sha.outputs.short }}
+
+      - name: Print image reference
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/ezra:test-${{ github.ref_name }}-${{ steps.sha.outputs.short }}"
+          echo "branch: ${{ github.ref_name }}"
+          echo "commit: ${{ github.sha }}"
+          echo "digest: ${{ steps.push.outputs.digest }}"
+          echo "image:  ${IMAGE}"
+          echo "run:    docker run --rm --name ezra-test -p 42002:42002 -v ezra_test:/data ${IMAGE}"
+          echo "::notice title=Test image ready::docker pull ${IMAGE}"
