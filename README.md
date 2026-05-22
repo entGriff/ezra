@@ -154,12 +154,12 @@ Everything else Redis supports (`GET`, `SET`, pub/sub, etc.) returns an error. E
 
 ```mermaid
 stateDiagram-v2
-    [*] --> available : push - task enters queue
-    available --> in_flight : pop - worker checks it out
-    in_flight --> available : worker crashed / timed out / nack with retries left
-    in_flight --> done : ack - worker confirmed success
-    in_flight --> dead : nack with no retries left,\nor timed out with no retries left
-    dead --> [*] : readable via queue::dead
+    [*] --> available : push
+    available --> in_flight : pop
+    in_flight --> available : crash, timeout, or nack with retries left
+    in_flight --> done : ack
+    in_flight --> dead : nack or timeout, no retries left
+    dead --> [*] : readable via queue&#58;&#58;dead
 ```
 
 **Tasks are never silently lost.** A task stays in the queue until a worker explicitly says it is done. If EZRA itself restarts, all in-flight tasks return to available automatically.
