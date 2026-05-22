@@ -2,6 +2,12 @@
 
 *Exchange via Zero-loss Relay Agent*
 
+<p align="center">
+  <a href="https://github.com/entGriff/ezra/actions/workflows/test.yml"><img src="https://github.com/entGriff/ezra/actions/workflows/test.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/entGriff/ezra/releases"><img src="https://img.shields.io/github/v/release/entGriff/ezra" alt="Latest release"></a>
+  <a href="https://github.com/entGriff/ezra/blob/main/LICENSE"><img src="https://img.shields.io/github/license/entGriff/ezra" alt="License"></a>
+</p>
+
 EZRA is a persistent task queue. Multiple services push tasks in, multiple workers pull them out and confirm when done.
 Each task stays visible and explicitly tracked until a worker marks it finished - no silent drops, no fire-and-forget. Backed by SQLite, powered by the Erlang/OTP runtime. Workers connect with any Redis client(redis itself is not needed) in any language - no new SDK required.
 
