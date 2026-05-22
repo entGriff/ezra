@@ -106,9 +106,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compute short SHA
-        id: sha
-        run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+      - name: Compute image tag
+        id: tag
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          SHORT=${GITHUB_SHA::7}
+          echo "image=ghcr.io/${OWNER}/ezra:test-${{ github.ref_name }}-${SHORT}" >> $GITHUB_OUTPUT
 
       - name: Download Linux artifacts into build context
         uses: actions/download-artifact@v4
@@ -138,11 +141,11 @@ jobs:
           file: docker/Dockerfile.local
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository_owner }}/ezra:test-${{ github.ref_name }}-${{ steps.sha.outputs.short }}
+          tags: ${{ steps.tag.outputs.image }}
 
       - name: Print image reference
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/ezra:test-${{ github.ref_name }}-${{ steps.sha.outputs.short }}"
+          IMAGE="${{ steps.tag.outputs.image }}"
           echo "branch: ${{ github.ref_name }}"
           echo "commit: ${{ github.sha }}"
           echo "digest: ${{ steps.push.outputs.digest }}"
