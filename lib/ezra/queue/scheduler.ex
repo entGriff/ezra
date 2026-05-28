@@ -42,13 +42,14 @@ defmodule Ezra.Queue.Scheduler do
   def init(opts) do
     db = Keyword.fetch!(opts, :db)
     interval = Keyword.get(opts, :interval_ms, @default_interval_ms)
+    name = Keyword.get(opts, :name, __MODULE__)
 
     schedule_sweep(interval)
-    {:ok, %{db: db, interval: interval}}
+    {:ok, %{db: db, interval: interval, name: name}}
   end
 
   @impl GenServer
-  def handle_info(:sweep, %{db: db, interval: interval} = state) do
+  def handle_info(:sweep, %{db: db, interval: interval, name: name} = state) do
     {reclaimed, dead_count} = reclaim_timed_out(db)
     expired = delete_expired(db)
 
@@ -57,11 +58,11 @@ defmodule Ezra.Queue.Scheduler do
     end
 
     if reclaimed > 0 do
-      :telemetry.execute([:ezra, :task, :timed_out], %{count: reclaimed}, %{})
+      :telemetry.execute([:ezra, :task, :timed_out], %{count: reclaimed}, %{engine: name})
     end
 
     if dead_count > 0 do
-      :telemetry.execute([:ezra, :task, :dead], %{count: dead_count}, %{})
+      :telemetry.execute([:ezra, :task, :dead], %{count: dead_count}, %{engine: name})
     end
 
     schedule_sweep(interval)
