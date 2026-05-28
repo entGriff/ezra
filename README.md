@@ -1,6 +1,5 @@
-# EZRA
+# **E**xchange via **Z**ero-loss **R**elay **A**gent
 
-*Exchange via Zero-loss Relay Agent*
 
 <p align="center">
   <a href="https://github.com/entGriff/ezra/actions/workflows/test.yml"><img src="https://github.com/entGriff/ezra/actions/workflows/test.yml/badge.svg" alt="CI"></a>
@@ -9,7 +8,7 @@
 </p>
 
 EZRA is a persistent task queue. Multiple services push tasks in, multiple workers pull them out and confirm when done.
-Each task stays visible and explicitly tracked until a worker marks it finished - no silent drops, no fire-and-forget. Backed by SQLite, powered by the Erlang/OTP runtime. Workers connect with any Redis client(redis itself is not needed) in any language - no new SDK required.
+Each task stays visible and explicitly tracked until a worker marks it finished - no silent drops, no fire-and-forget. Backed by SQLite, powered by the Erlang/OTP runtime. Workers connect with any Redis client (Redis itself is not needed) in any language - no new SDK required.
 
 > **This project is maintained by a single author and pull requests are not accepted. Issues for bugs or questions are welcome.**
 
@@ -25,9 +24,6 @@ Each task stays visible and explicitly tracked until a worker marks it finished 
 - [Multiple workers and producers](#multiple-workers-and-producers)
 - [Install](#install)
 - [Run](#run)
-- [Connect](#connect)
-- [Usage](#usage)
-- [Docker](#docker)
 - [Elixir](#elixir)
 - [Terminology](#terminology)
 
@@ -120,20 +116,29 @@ flowchart LR
 
 Services and workers can run on any machine in any language. Workers actively pull tasks when ready - Ezra delivers one immediately if available, or holds the connection until one arrives. Everything persists to `ezra.db` on the server.
 
+| | |
+|---|---|
+| Memory per connected worker | ~2 KB (not an OS thread) |
+| Memory baseline | ~20 MB |
+| Throughput on a typical cloud VM (SSD) | ~15k–30k tasks/sec |
+| Throughput on NVMe | ~40k–80k tasks/sec |
+| Binary size | ~20 MB, self-contained |
+
+Throughput is bounded by SQLite write speed, which depends on the disk. The engine itself adds ~1–5 µs overhead per call.
+
 ---
 
 ## Why does this exist?
 
-
 Your user sends any requests to your API which needs to be processed, let's say uploads PDF. You can do some processing inline in the request handler, but then your API blocks for 10 seconds, the user stares at a spinner, and if your process restarts mid-job, or you will release new deployment the work is silently lost.
 
-You also are not able to upscale only the processing part, you need to upscale the entire API cause it is tigthly coupled with the request handling logic.
+You also are not able to upscale only the processing part, you need to upscale the entire API cause it is tightly coupled with the request handling logic.
 
 A task queue fixes this: the upload handler pushes a task and returns immediately. A separate worker picks it up, does the heavy lifting, and confirms when done. Tasks survive restarts. Failures retry automatically.
 
-There are amazing queues out there - Kafka, RabbitMQ, ActiveMQ, SQS, and many more. But most of them are resource-heavy, expensive, and time-consuming to run properly. You need a cluster, dedicated machines, and someone or sometimes a team who understands the operational model well enough to set it up properly andrecover the system when things break. Managed options cut the ops burden but add a monthly subscription and lock you into one cloud vendor.
+There are amazing queues out there - Kafka, RabbitMQ, ActiveMQ, SQS, and many more. But most of them are resource-heavy, expensive, and time-consuming to run properly. You need a cluster, dedicated machines, and someone or sometimes a team who understands the operational model well enough to set it up properly and recover the system when things break. Managed options cut the ops burden but add a monthly subscription and lock you into one cloud vendor.
 
-The result: most teams skip persistent queuing entirely and use in-memory jobs that quietly lose work on restart and is fragile. The trade-off exists because the alternative felt too heavy.
+The result: most teams skip persistent queuing entirely and use in-memory jobs that quietly lose work on restart and are fragile. The trade-off exists because the alternative felt too heavy.
 
 EZRA is the alternative that does not feel heavy. One binary, no cluster, no setup. It stores everything in a SQLite file on the same machine it runs on. Workers connect with whatever Redis client your team already has, in any language. No broker to babysit, no cluster to setup, no topics to define, no queue to configure before you can use it.
 
@@ -178,11 +183,14 @@ stateDiagram-v2
 
 EZRA exposes a network API over TCP. Any machine that can reach the port can push tasks or pop them. No registration, no configuration per client - just connect and use. See [The big picture](#the-big-picture) for a visual overview.
 
-**Each task goes to exactly one worker - never duplicated.** EZRA guarantees this regardless of how many workers are connected.
+- Any number of producer clients can push to the same queue simultaneously
+- Any number of worker clients can pop from the same queue - each task goes to exactly one worker, never duplicated
+- Workers are identified by a unique name you provide (`worker-1`, `worker-2`, etc.) - EZRA uses this to track which tasks are in-flight for which process
+- Blocking pop holds the connection open and delivers a task the moment one arrives - no polling loop needed
 
-Work distributes on demand: whichever worker finishes first asks for the next task and gets it immediately. Scale workers by running more of them - no coordination needed, no configuration changes in EZRA.
+Work distributes on demand: whichever worker finishes first asks for the next task and gets it immediately. Scale by running more workers - no coordination needed, no configuration changes in EZRA.
 
-**A note on SQLite and remote access.** Nobody connects to SQLite remotely. Only EZRA's internal engine touches the file, on the same machine where EZRA runs. External clients talk to EZRA over TCP - SQLite is completely hidden behind EZRA. The real constraint is that EZRA itself is single-node: all data lives on the one machine where it is running.
+**A note on SQLite and remote access.** Nobody connects to SQLite remotely. Only EZRA's internal engine touches the file, on the same machine where EZRA runs. External clients talk to EZRA over TCP. The real constraint is that EZRA itself is single-node: all data lives on the one machine where it runs.
 
 ---
 
@@ -190,7 +198,7 @@ Work distributes on demand: whichever worker finishes first asks for the next ta
 
 > Prebuilt binaries: [github.com/entGriff/ezra/releases](https://github.com/entGriff/ezra/releases)
 >
-> Prefer containers? See the [Docker](#docker) section.
+> Prefer containers? See [Docker in docs/usage.md](docs/usage.md#docker).
 
 ```bash
 # macOS (Apple Silicon)
@@ -206,7 +214,7 @@ curl -Lo ezra https://github.com/entGriff/ezra/releases/latest/download/ezra-lin
 chmod +x ezra
 ```
 
-No runtime required. The binary is self-contained (~15 MB).
+No runtime required. The binary is self-contained (~20 MB).
 
 ---
 
@@ -218,210 +226,15 @@ No runtime required. The binary is self-contained (~15 MB).
 
 EZRA creates `ezra.db` in the data directory on first run. On every subsequent start it opens the existing file - your tasks are exactly where you left them.
 
-All options can also be set via environment variables:
+Options can also be set via environment variables:
 
 ```bash
 EZRA_DATA_DIR=/var/ezra EZRA_PORT=42002 ./ezra
 ```
 
-### Options
+Send `SIGTERM` or press `Ctrl+C` to stop. EZRA finishes any in-progress operations and shuts down cleanly.
 
-| Flag                     | Env variable              | Default      | Description                               |
-| ------------------------ | ------------------------- | ------------ | ----------------------------------------- |
-| `--data-dir PATH`        | `EZRA_DATA_DIR`           | *(required)* | Directory for `ezra.db`                   |
-| `--port N`               | `EZRA_PORT`               | `42002`      | TCP port                                  |
-| `--host ADDR`            | `EZRA_HOST`               | `0.0.0.0`    | Bind address                              |
-| `--visibility-timeout N` | `EZRA_VISIBILITY_TIMEOUT` | `30`         | Seconds before a stuck task is requeued   |
-| `--max-attempts N`       | `EZRA_MAX_ATTEMPTS`       | `3`          | Retries before a task is moved to dead    |
-| `--retention-seconds N`  | `EZRA_RETENTION_SECONDS`  | off          | Auto-delete tasks older than N seconds    |
-| `--scheduler-ms N`       | `EZRA_SCHEDULER_MS`       | `5000`       | How often EZRA checks for timed-out tasks |
-
-### Stop
-
-Send `SIGTERM` or press `Ctrl+C`. EZRA finishes any in-progress operations and shuts down cleanly.
-
-### With systemd
-
-```ini
-# /etc/systemd/system/ezra.service
-[Unit]
-Description=EZRA task queue
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/ezra --data-dir /var/ezra
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-systemctl start ezra
-systemctl stop ezra
-systemctl restart ezra
-```
-
----
-
-## Connect
-
-Use the Redis client your language already has - just point it at EZRA's port.
-
-**Python**
-
-```python
-import redis
-r = redis.Redis(host="localhost", port=42002, decode_responses=True)
-```
-
-**Node.js**
-
-```js
-import { createClient } from "redis"
-const r = await createClient({ url: "redis://localhost:42002" }).connect()
-```
-
-**Go**
-
-```go
-rdb := redis.NewClient(&redis.Options{Addr: "localhost:42002"})
-```
-
-**Ruby**
-
-```ruby
-r = Redis.new(host: "localhost", port: 42002)
-```
-
----
-
-## Usage
-
-### Push a task
-
-```python
-import json, redis
-r = redis.Redis(host="localhost", port=42002, decode_responses=True)
-
-task_id = r.xadd("emails", {"payload": json.dumps({"to": "alice@example.com"})})
-```
-
-### Pop and process
-
-`xreadgroup` takes the next available task and claims it. The `BLOCK` parameter tells EZRA how long to wait if the queue is empty - the connection stays open and EZRA delivers the task the moment one arrives. No polling.
-
-```python
-results = r.xreadgroup("workers", "worker-1", {"emails": ">"}, count=1, block=30_000)
-
-if results:
-    stream, entries = results[0]
-    msg_id, fields = entries[0]
-
-    send_email(json.loads(fields["payload"]))
-    r.xack("emails", "workers", msg_id)
-```
-
-### Continuous worker loop
-
-Use `BLOCK 0` to wait indefinitely. The worker stays connected and receives tasks as they arrive.
-
-```python
-import json, redis
-
-r = redis.Redis(host="localhost", port=42002, decode_responses=True)
-
-while True:
-    results = r.xreadgroup("workers", "worker-1", {"emails": ">"}, count=1, block=0)
-    if results:
-        stream, entries = results[0]
-        msg_id, fields = entries[0]
-
-        try:
-            send_email(json.loads(fields["payload"]))
-            r.xack("emails", "workers", msg_id)
-        except Exception:
-            pass  # let visibility_timeout reclaim and retry
-```
-
-Each worker process should use a distinct name (`worker-1`, `worker-2`, etc.). EZRA uses this to track which tasks are in-flight for which worker.
-
-### Multiple queues
-
-Each queue is independent. Create as many as you need by using different names.
-
-```python
-r.xadd("emails",   {"payload": "..."})
-r.xadd("invoices", {"payload": "..."})
-r.xadd("webhooks", {"payload": "..."})
-```
-
-### Queue stats
-
-```python
-r.xlen("emails")   # count of waiting (available) tasks
-```
-
-For a full picture across all queues, connect any SQLite client to `ezra.db`:
-
-```sql
-SELECT
-    queue,
-    COUNT(*) FILTER (WHERE status = 'available')  AS waiting,
-    COUNT(*) FILTER (WHERE status = 'in_flight')  AS processing,
-    COUNT(*) FILTER (WHERE status = 'done')        AS done,
-    COUNT(*) FILTER (WHERE status = 'dead')        AS failed,
-    COUNT(*)                                        AS total
-FROM tasks
-GROUP BY queue
-ORDER BY queue;
-```
-
-### Dead-letter queue
-
-Tasks that fail `--max-attempts` times move to `<queue>::dead`. Read from it the same way:
-
-```python
-dead = r.xreadgroup("monitor", "inspector", {"emails::dead": ">"}, count=10)
-```
-
----
-
-## Docker
-
-The official image works on both `linux/amd64` and `linux/arm64` - Docker pulls the right one automatically.
-
-```bash
-# Start with a persistent volume
-docker run -d \
-  --name ezra \
-  -p 42002:42002 \
-  -v ezra_data:/data \
-  ghcr.io/entgriff/ezra
-
-# Use a different host port (EZRA still runs on 42002 internally)
-docker run -d \
-  --name ezra \
-  -p 9000:42002 \
-  -v ezra_data:/data \
-  ghcr.io/entgriff/ezra
-
-# Override any option via env vars
-docker run -d \
-  --name ezra \
-  -p 42002:42002 \
-  -v ezra_data:/data \
-  -e EZRA_VISIBILITY_TIMEOUT=60 \
-  -e EZRA_MAX_ATTEMPTS=5 \
-  ghcr.io/entgriff/ezra
-```
-
-```bash
-docker stop ezra     # graceful shutdown
-docker start ezra    # resume - all tasks are preserved
-docker rm -f ezra    # destroy container (data volume survives)
-```
+For the full options reference, Docker deployment examples, language client snippets, and systemd setup see [docs/usage.md](docs/usage.md).
 
 ---
 
@@ -446,7 +259,7 @@ children = [
 :ok         = Ezra.ack(:ezra, task.id)
 ```
 
-The full guide is going to be added soon - supervision tree setup, worker patterns, nack, stats, dead-letter, and multiple instances.
+See [docs/elixir-client.md](docs/elixir-client.md) for the full guide.
 
 ---
 
@@ -456,7 +269,7 @@ The full guide is going to be added soon - supervision tree setup, worker patter
 
 **pop** - take the next task to work on. The task is not deleted - it is temporarily checked out. You must confirm when done.
 
-**ack** (acknowledge) - tell EZRA "I finished this task." It is marked done and will not be given to anyone else.
+**ack** (acknowledge) - tell EZRA "I finished this task." It is marked `done` and will not be given to anyone else. Done tasks stay in the database - they accumulate over time unless you configure `--retention-seconds` on the queue or push tasks with a `ttl_seconds` option.
 
 **nack** (negative acknowledge) - tell EZRA "I failed." EZRA puts it back for another worker to try, up to `max_attempts` times.
 
@@ -466,5 +279,6 @@ The full guide is going to be added soon - supervision tree setup, worker patter
 
 ## Further reading
 
-- `docs/architecture.md` - storage schema, module map, telemetry events *(coming soon)*
-- `docs/elixir-client.md` - Elixir library mode reference *(coming soon)*
+- [docs/usage.md](docs/usage.md) - language clients, full usage examples, Docker, options reference, systemd
+- [docs/architecture.md](docs/architecture.md) - storage schema, module map, wire protocol, telemetry
+- [docs/elixir-client.md](docs/elixir-client.md) - Elixir library mode reference
