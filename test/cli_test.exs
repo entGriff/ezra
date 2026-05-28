@@ -10,7 +10,7 @@ defmodule Ezra.CLITest do
       assert opts[:name] == Ezra
     end
 
-    test "--port overrides default 6380" do
+    test "--port sets the TCP port" do
       assert {:ok, opts} = CLI.parse(["--data-dir", "/tmp/x", "--port", "7777"])
       assert opts[:port] == 7777
     end

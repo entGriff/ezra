@@ -1,10 +1,11 @@
 defmodule Ezra.Queue.TelemetryTest do
   use ExUnit.Case, async: true
 
-  alias Ezra.Queue.Engine
+  alias Ezra.Queue.{Engine, Scheduler}
   alias Ezra.Storage.SQLite
 
-  # Each test gets its own SQLite + Engine to avoid event crosstalk
+  # Each test gets its own SQLite + Engine to avoid event crosstalk.
+  # db_name is exposed so nested setups can attach a Scheduler to the same db.
   setup do
     uid = System.unique_integer([:positive])
     path = "/tmp/ezra_telemetry_#{uid}.db"
@@ -16,7 +17,7 @@ defmodule Ezra.Queue.TelemetryTest do
 
     on_exit(fn -> File.rm_rf!(path) end)
 
-    %{engine: eng_name}
+    %{engine: eng_name, db: db_name}
   end
 
   # Attach a telemetry handler that only forwards events from the specific
@@ -123,5 +124,29 @@ defmodule Ezra.Queue.TelemetryTest do
     {:error, :not_found} = Engine.ack(engine, 999_999)
 
     refute_receive {:telemetry, [:ezra, :task, :acked], _, _}, 50
+  end
+
+  # ---------------------------------------------------------------------------
+
+
+  describe "scheduler telemetry" do
+    # Attach a scheduler to the db that the module-level setup already created.
+    # Starting a second SQLite+Engine here would conflict with the module setup
+    # since both setups run for each test in this describe block.
+    setup %{db: db} do
+      sched_name = :"telemetry_scheduler_#{System.unique_integer([:positive])}"
+      start_supervised!({Scheduler, db: db, interval_ms: 50, name: sched_name})
+      %{scheduler: sched_name}
+    end
+
+    test "timed-out task emits [:ezra, :task, :timed_out]", %{engine: engine, scheduler: scheduler} do
+      attach(self(), scheduler, [[:ezra, :task, :timed_out]])
+
+      Engine.push(engine, "timeout_q", "task", visibility_timeout: 0)
+      {:ok, _} = Engine.pop(engine, "timeout_q", worker_id: "w")
+
+      assert_receive {:telemetry, [:ezra, :task, :timed_out], %{count: n}, _}, 500
+      assert n >= 1
+    end
   end
 end

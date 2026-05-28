@@ -93,21 +93,35 @@ defmodule Ezra.Queue.EngineTest do
     end
 
     test "blocking pop resolves when a task is pushed", %{engine: e} do
-      parent = self()
-
-      # Worker blocks in a separate process
-      Task.start(fn ->
-        result = Engine.pop(e, "async_q", worker_id: "w1", block: 2_000)
-        send(parent, {:popped, result})
+      worker = Task.async(fn ->
+        Engine.pop(e, "async_q", worker_id: "w1", block: 2_000)
       end)
 
-      # Small delay to ensure the worker is registered as a waiter
-      Process.sleep(50)
+      # 100ms is conservative - the GenServer.call typically registers in < 1ms.
+      # The wait is needed because the spawned process must reach Engine.pop
+      # before the push arrives, otherwise pop finds a task immediately and
+      # the waiter path is never exercised.
+      Process.sleep(100)
 
       Engine.push(e, "async_q", "hello")
 
-      assert_receive {:popped, {:ok, task}}, 1_000
+      assert {:ok, task} = Task.await(worker, 3_000)
       assert task.payload == "hello"
+    end
+
+    test "concurrent pops each claim a distinct task", %{engine: e} do
+      count = 10
+      for i <- 1..count, do: Engine.push(e, "concurrent", "task_#{i}")
+
+      workers = for i <- 1..count do
+        Task.async(fn -> Engine.pop(e, "concurrent", worker_id: "w#{i}") end)
+      end
+
+      results = Task.await_many(workers, 5_000)
+      ids = for {:ok, task} <- results, do: task.id
+
+      assert length(ids) == count
+      assert length(Enum.uniq(ids)) == count
     end
 
     test "blocking pop returns {:empty} on timeout", %{engine: e} do
@@ -214,15 +228,55 @@ defmodule Ezra.Queue.EngineTest do
     end
   end
 
+  # ── dead-letter queue ──────────────────────────────────────────────────────
+
+  describe "queue::dead operations" do
+    test "pop from ::dead when empty returns {:empty}", %{engine: e} do
+      assert {:empty} = Engine.pop(e, "jobs::dead", worker_id: "monitor")
+    end
+
+    test "task popped from ::dead can be acked", %{engine: e, db: db} do
+      Engine.push(e, "jobs", "task", max_attempts: 1)
+      {:ok, t} = Engine.pop(e, "jobs", worker_id: "w")
+      {:ok, :dead} = Engine.nack(e, t.id)
+
+      {:ok, dead_task} = Engine.pop(e, "jobs::dead", worker_id: "monitor")
+      assert :ok = Engine.ack(e, dead_task.id)
+
+      [[status]] = SQLite.query!(db, "SELECT status FROM tasks WHERE id = ?1", [t.id])
+      assert status == "done"
+    end
+
+    test "nack on a task from ::dead moves it back to dead", %{engine: e, db: db} do
+      Engine.push(e, "jobs", "task", max_attempts: 1)
+      {:ok, t} = Engine.pop(e, "jobs", worker_id: "w")
+      {:ok, :dead} = Engine.nack(e, t.id)
+
+      # Pop from dead, then nack again - attempts already >= max_attempts
+      {:ok, dead_task} = Engine.pop(e, "jobs::dead", worker_id: "monitor")
+      assert {:ok, :dead} = Engine.nack(e, dead_task.id)
+
+      [[status]] = SQLite.query!(db, "SELECT status FROM tasks WHERE id = ?1", [t.id])
+      assert status == "dead"
+    end
+  end
+
   # ── queue_info ─────────────────────────────────────────────────────────────
 
   describe "queue_info/2" do
-    test "returns zero counts for an empty queue", %{engine: e} do
-      Engine.push(e, "stats_q", "seed") # creates the queue
+    test "acked tasks are not counted in available, in_flight, or dead", %{engine: e} do
+      Engine.push(e, "stats_q", "seed")
       {:ok, task} = Engine.pop(e, "stats_q", worker_id: "w")
       Engine.ack(e, task.id)
 
       info = Engine.queue_info(e, "stats_q")
+      assert info.available == 0
+      assert info.in_flight == 0
+      assert info.dead == 0
+    end
+
+    test "returns zero counts for a queue that has never been used", %{engine: e} do
+      info = Engine.queue_info(e, "nonexistent_queue")
       assert info.available == 0
       assert info.in_flight == 0
       assert info.dead == 0

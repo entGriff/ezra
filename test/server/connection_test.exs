@@ -215,7 +215,7 @@ defmodule Ezra.Server.ConnectionTest do
       end)
 
     # Give the blocking read time to register in Engine
-    Process.sleep(50)
+    Process.sleep(100)
 
     # Push from second connection
     pushed_id = send_command!(pusher, ["XADD", "bq", "*", "payload", "wake"])
@@ -236,6 +236,62 @@ defmodule Ezra.Server.ConnectionTest do
     assert is_nil(result)
   end
 
+  test "engine stays healthy after connection drops during blocking pop",
+       %{socket: healthy, port: port} do
+    dropper = tcp_connect(port)
+
+    on_exit(fn -> :gen_tcp.close(dropper) end)
+
+    # Start a short blocking pop from the connection we're about to drop.
+    # We fire-and-forget since the dropper socket will close before it returns.
+    Task.start(fn ->
+      wire = IO.iodata_to_binary(RESP.encode(
+        ["XREADGROUP", "GROUP", "workers", "dropper",
+         "COUNT", "1", "BLOCK", "150", "STREAMS", "drop_q", ">"]))
+      :gen_tcp.send(dropper, wire)
+    end)
+
+    # Give it time to register in the Engine waiters map
+    Process.sleep(100)
+
+    # Abruptly close the connection - simulates a client crash
+    :gen_tcp.close(dropper)
+
+    # Wait for the block to expire and the connection process to finish cleanup
+    Process.sleep(300)
+
+    # Engine must still be healthy: push and pop should work normally
+    id = send_command!(healthy, ["XADD", "drop_q", "*", "payload", "recovery"])
+    assert is_binary(id)
+
+    result = send_command!(healthy, ["XREADGROUP", "GROUP", "workers", "w2",
+                                     "COUNT", "1", "STREAMS", "drop_q", ">"])
+    assert [["drop_q", [[^id, _]]]] = result
+  end
+
+  # ---------------------------------------------------------------------------
+  # Error handling - connection must survive bad input
+  # ---------------------------------------------------------------------------
+
+  test "malformed RESP bytes return a protocol error and connection survives", %{socket: socket} do
+    # "!" is not a valid RESP type prefix; decode returns {:error, ...}
+    :ok = :gen_tcp.send(socket, "!bad\r\n")
+    resp = recv_one(socket, <<>>, 1_000)
+    assert {:error, _} = resp
+
+    id = send_command!(socket, ["XADD", "q", "*", "payload", "after_error"])
+    assert is_binary(id)
+  end
+
+  test "command with wrong argument count returns error and connection survives", %{socket: socket} do
+    # XADD with no queue name - falls through to {:unknown, tokens}
+    resp = send_command!(socket, ["XADD"])
+    assert {:error, _} = resp
+
+    id = send_command!(socket, ["XADD", "q", "*", "payload", "ok"])
+    assert is_binary(id)
+  end
+
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
@@ -247,7 +303,7 @@ defmodule Ezra.Server.ConnectionTest do
     recv_one(socket, <<>>, Keyword.get(opts, :timeout, 1_000))
   end
 
-  defp recv_one(socket, buf, timeout \\ 1_000) do
+  defp recv_one(socket, buf, timeout) do
     case RESP.decode(buf) do
       {:ok, value, _rest} ->
         value
