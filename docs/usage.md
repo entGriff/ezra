@@ -80,10 +80,12 @@ if results:
 To report failure explicitly instead of waiting for the visibility timeout to reclaim the task:
 
 ```python
-r.xnack("emails", "workers", msg_id)
+r.xdel("emails", msg_id)
 ```
 
 EZRA returns the task to `available` immediately and increments its attempt counter. Once `max_attempts` is reached, it moves to the dead-letter queue instead.
+
+Note: EZRA repurposes `XDEL` as nack - it does not hard-delete the task. If your client supports raw commands, `XNACK <queue> <group> <id>` does the same thing.
 
 ---
 
@@ -106,7 +108,7 @@ while True:
             send_email(json.loads(fields["payload"]))
             r.xack("emails", "workers", msg_id)
         except Exception:
-            pass  # let visibility_timeout reclaim and retry
+            r.xdel("emails", msg_id)  # immediate retry; or just `pass` to let visibility_timeout retry
 ```
 
 Each worker process should use a distinct name (`worker-1`, `worker-2`, etc.). EZRA uses this to track which tasks are in-flight for which worker.

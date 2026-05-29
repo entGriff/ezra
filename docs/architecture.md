@@ -147,7 +147,9 @@ EZRA implements the Redis Streams subset of RESP2. Any Redis client works withou
 | `XADD <queue> * payload <data>`                                            | Push a task. Creates the queue on first use.                                                        |
 | `XREADGROUP GROUP <g> <consumer> COUNT <n> [BLOCK <ms>] STREAMS <queue> >` | Pop up to `n` tasks. Blocks up to `ms` ms if queue is empty.                                        |
 | `XACK <queue> <group> <id>`                                                | Acknowledge. Marks task `done`.                                                                     |
-| `XNACK <queue> <group> <id>`                                               | Negative acknowledge. Returns task to available for retry; moves to dead if attempts are exhausted. |
+| `XDEL <queue> <id>`                                                        | Nack via standard Redis command. Returns task for retry; moves to dead if attempts are exhausted. EZRA repurposes this - it does not hard-delete. |
+| `XNACK <queue> <group> <id>`                                               | Same as XDEL. For clients whose SDK supports sending arbitrary commands directly.                   |
+| `CLIENT SETNAME <name>`                                                    | Accepted as a no-op. Allows any Redis SDK to connect without errors.                                |
 | `XGROUP CREATE <queue> <group> $ MKSTREAM`                                 | Pre-create a queue. Optional - XADD does it automatically.                                          |
 | `XLEN <queue>`                                                             | Count of `available` tasks.                                                                         |
 | `XINFO STREAM <queue>`                                                     | Full queue stats: depth, in-flight, dead, last entry.                                               |

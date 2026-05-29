@@ -82,6 +82,10 @@ defmodule Ezra.Server.RESP do
     upped = Enum.map(tokens, &String.upcase/1)
 
     case upped do
+      # CLIENT SETNAME <name>  (no-op - accepted for SDK compatibility)
+      ["CLIENT", "SETNAME", _] ->
+        {:client_setname}
+
       # XADD <queue> * payload <data> [field value ...]
       ["XADD", _queue, _id | _] ->
         {:xadd, Enum.at(tokens, 1), parse_fields(Enum.drop(tokens, 3))}
@@ -106,6 +110,10 @@ defmodule Ezra.Server.RESP do
       # XNACK <queue> <group> <id>
       ["XNACK", _, _, _] ->
         {:xnack, Enum.at(tokens, 1), Enum.at(tokens, 3)}
+
+      # XDEL <queue> <id>  - treated as nack in EZRA (returns task for retry)
+      ["XDEL", _, _ | _] ->
+        {:xdel_nack, Enum.at(tokens, 1), Enum.at(tokens, 2)}
 
       # XLEN <queue>
       ["XLEN", _] ->

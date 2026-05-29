@@ -227,6 +227,24 @@ defmodule Ezra.Server.RESPTest do
                {:xnack, "emails", "abc-123"}
     end
 
+    test "XDEL parses to xdel_nack" do
+      assert RESP.parse_command(["XDEL", "emails", "abc-123"]) ==
+               {:xdel_nack, "emails", "abc-123"}
+    end
+
+    test "XDEL is case-insensitive" do
+      assert {:xdel_nack, "emails", "abc-123"} =
+               RESP.parse_command(["xdel", "emails", "abc-123"])
+    end
+
+    test "CLIENT SETNAME parses to client_setname" do
+      assert RESP.parse_command(["CLIENT", "SETNAME", "my-worker"]) == {:client_setname}
+    end
+
+    test "CLIENT SETNAME is case-insensitive" do
+      assert {:client_setname} = RESP.parse_command(["client", "setname", "x"])
+    end
+
     test "XLEN" do
       assert RESP.parse_command(["XLEN", "emails"]) == {:xlen, "emails"}
     end

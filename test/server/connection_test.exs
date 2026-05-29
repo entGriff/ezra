@@ -111,6 +111,52 @@ defmodule Ezra.Server.ConnectionTest do
   end
 
   # ---------------------------------------------------------------------------
+  # CLIENT SETNAME
+  # ---------------------------------------------------------------------------
+
+  test "CLIENT SETNAME returns OK", %{socket: socket} do
+    resp = send_command!(socket, ["CLIENT", "SETNAME", "my-worker"])
+    assert {:simple, "OK"} = resp
+  end
+
+  test "connection stays healthy after CLIENT SETNAME", %{socket: socket} do
+    send_command!(socket, ["CLIENT", "SETNAME", "my-worker"])
+    id = send_command!(socket, ["XADD", "q", "*", "payload", "after_setname"])
+    assert is_binary(id)
+  end
+
+  # ---------------------------------------------------------------------------
+  # XDEL (nack)
+  # ---------------------------------------------------------------------------
+
+  test "XDEL on in-flight task returns 1", %{socket: socket} do
+    id = send_command!(socket, ["XADD", "emails", "*", "payload", "msg"])
+    send_command!(socket, ["XREADGROUP", "GROUP", "workers", "w1",
+                            "COUNT", "1", "STREAMS", "emails", ">"])
+    n = send_command!(socket, ["XDEL", "emails", id])
+    assert n == 1
+  end
+
+  test "XDEL on unknown id returns 0", %{socket: socket} do
+    n = send_command!(socket, ["XDEL", "emails", "9999999"])
+    assert n == 0
+  end
+
+  test "XDEL returns task to available - can be popped again", %{socket: socket} do
+    id = send_command!(socket, ["XADD", "emails", "*", "payload", "retry-me"])
+
+    send_command!(socket, ["XREADGROUP", "GROUP", "workers", "w1",
+                            "COUNT", "1", "STREAMS", "emails", ">"])
+
+    send_command!(socket, ["XDEL", "emails", id])
+
+    result = send_command!(socket, ["XREADGROUP", "GROUP", "workers", "w1",
+                                    "COUNT", "1", "STREAMS", "emails", ">"])
+    assert [["emails", [[^id, fields]]]] = result
+    assert field_value(fields, "payload") == "retry-me"
+  end
+
+  # ---------------------------------------------------------------------------
   # XNACK
   # ---------------------------------------------------------------------------
 

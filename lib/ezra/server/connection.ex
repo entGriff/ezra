@@ -79,6 +79,10 @@ defmodule Ezra.Server.Connection do
 
   # --- Command dispatch ---
 
+  defp dispatch({:client_setname}, _state) do
+    RESP.encode_ok()
+  end
+
   defp dispatch({:xadd, queue, fields}, state) do
     payload = Map.get(fields, "payload", "")
 
@@ -116,6 +120,13 @@ defmodule Ezra.Server.Connection do
     case Engine.nack(state.engine, String.to_integer(id_str)) do
       {:ok, _} -> RESP.encode_ok()
       {:error, :not_found} -> RESP.encode_error("ERR task not found")
+    end
+  end
+
+  defp dispatch({:xdel_nack, _queue, id_str}, state) do
+    case Engine.nack(state.engine, String.to_integer(id_str)) do
+      {:ok, _} -> RESP.encode(1)
+      {:error, :not_found} -> RESP.encode(0)
     end
   end
 

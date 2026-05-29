@@ -155,7 +155,8 @@ The specific commands EZRA implements come from **Redis Streams** - the part of 
 - **XADD** - push a task into a named queue
 - **XREADGROUP** - pop the next task and claim it under a worker identity; supports blocking so workers do not need to poll
 - **XACK** - confirm that a task was processed successfully
-- **XNACK** - report failure; EZRA puts the task back for retry
+- **XDEL** - report failure; EZRA returns the task for retry instead of deleting it
+- **XNACK** - same as XDEL, for clients whose SDK can send arbitrary commands directly
 
 Everything else Redis supports (`GET`, `SET`, pub/sub, etc.) returns an error. EZRA is not trying to be Redis.
 
