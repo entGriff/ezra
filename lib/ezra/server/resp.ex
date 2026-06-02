@@ -10,6 +10,7 @@ defmodule Ezra.Server.RESP do
   # encode/1 returns iodata()
 
   @crlf "\r\n"
+  @version Mix.Project.config()[:version]
 
   # ---------------------------------------------------------------------------
   # Encode
@@ -82,6 +83,14 @@ defmodule Ezra.Server.RESP do
     upped = Enum.map(tokens, &String.upcase/1)
 
     case upped do
+      # HELLO [protover [AUTH username password] [SETNAME clientname]]
+      # AUTH and SETNAME sub-options are accepted and ignored.
+      ["HELLO"] ->
+        {:hello, 2}
+
+      ["HELLO", v | _] ->
+        {:hello, parse_hello_proto(v)}
+
       # CLIENT SETNAME <name>  (no-op - accepted for SDK compatibility)
       ["CLIENT", "SETNAME", _] ->
         {:client_setname}
@@ -185,6 +194,20 @@ defmodule Ezra.Server.RESP do
     ])
   end
 
+  # HELLO → flat RESP2 array that clients interpret as a map.
+  # The "proto": 2 entry confirms RESP2 negotiation to the client.
+  def encode_hello() do
+    encode([
+      "server",  "ezra",
+      "version", @version,
+      "proto",   2,
+      "id",      0,
+      "mode",    "standalone",
+      "role",    "master",
+      "modules", []
+    ])
+  end
+
   def encode_error(msg) when is_binary(msg), do: encode({:error, msg})
   def encode_ok(), do: encode(:ok)
 
@@ -276,6 +299,13 @@ defmodule Ezra.Server.RESP do
   # ---------------------------------------------------------------------------
   # Private - command parse helpers
   # ---------------------------------------------------------------------------
+
+  defp parse_hello_proto(v) do
+    case Integer.parse(v) do
+      {n, ""} -> n
+      _ -> 2
+    end
+  end
 
   defp parse_fields(fields) do
     fields

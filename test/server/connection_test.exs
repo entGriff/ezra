@@ -111,6 +111,36 @@ defmodule Ezra.Server.ConnectionTest do
   end
 
   # ---------------------------------------------------------------------------
+  # HELLO
+  # ---------------------------------------------------------------------------
+
+  test "HELLO returns flat array with proto 2", %{socket: socket} do
+    resp = send_command!(socket, ["HELLO"])
+    assert is_list(resp)
+    idx = Enum.find_index(resp, &(&1 == "proto"))
+    assert Enum.at(resp, idx + 1) == 2
+  end
+
+  test "HELLO 2 returns flat array with proto 2", %{socket: socket} do
+    resp = send_command!(socket, ["HELLO", "2"])
+    assert is_list(resp)
+    idx = Enum.find_index(resp, &(&1 == "proto"))
+    assert Enum.at(resp, idx + 1) == 2
+  end
+
+  test "HELLO 3 returns NOPROTO error", %{socket: socket} do
+    resp = send_command!(socket, ["HELLO", "3"])
+    assert {:error, msg} = resp
+    assert String.starts_with?(msg, "NOPROTO")
+  end
+
+  test "connection stays healthy after HELLO 2", %{socket: socket} do
+    send_command!(socket, ["HELLO", "2"])
+    id = send_command!(socket, ["XADD", "q", "*", "payload", "after_hello"])
+    assert is_binary(id)
+  end
+
+  # ---------------------------------------------------------------------------
   # CLIENT SETNAME
   # ---------------------------------------------------------------------------
 

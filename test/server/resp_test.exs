@@ -237,6 +237,28 @@ defmodule Ezra.Server.RESPTest do
                RESP.parse_command(["xdel", "emails", "abc-123"])
     end
 
+    test "HELLO with no args defaults to proto 2" do
+      assert RESP.parse_command(["HELLO"]) == {:hello, 2}
+    end
+
+    test "HELLO 2 parses to proto 2" do
+      assert RESP.parse_command(["HELLO", "2"]) == {:hello, 2}
+    end
+
+    test "HELLO 3 parses to proto 3" do
+      assert RESP.parse_command(["HELLO", "3"]) == {:hello, 3}
+    end
+
+    test "HELLO 2 with AUTH and SETNAME sub-options parses to proto 2" do
+      assert RESP.parse_command(["HELLO", "2", "AUTH", "user", "pass", "SETNAME", "worker"]) ==
+               {:hello, 2}
+    end
+
+    test "HELLO is case-insensitive" do
+      assert {:hello, 2} = RESP.parse_command(["hello"])
+      assert {:hello, 2} = RESP.parse_command(["hello", "2"])
+    end
+
     test "CLIENT SETNAME parses to client_setname" do
       assert RESP.parse_command(["CLIENT", "SETNAME", "my-worker"]) == {:client_setname}
     end
@@ -317,6 +339,21 @@ defmodule Ezra.Server.RESPTest do
       assert is_list(decoded)
       idx = Enum.find_index(decoded, &(&1 == "name"))
       assert Enum.at(decoded, idx + 1) == "emails"
+    end
+
+    test "encode_hello returns a flat array with proto 2" do
+      wire = IO.iodata_to_binary(RESP.encode_hello())
+      {:ok, decoded, ""} = RESP.decode(wire)
+      assert is_list(decoded)
+      idx = Enum.find_index(decoded, &(&1 == "proto"))
+      assert Enum.at(decoded, idx + 1) == 2
+    end
+
+    test "encode_hello includes server and mode fields" do
+      wire = IO.iodata_to_binary(RESP.encode_hello())
+      {:ok, decoded, ""} = RESP.decode(wire)
+      assert "ezra" == decoded |> then(&Enum.at(&1, Enum.find_index(&1, fn x -> x == "server" end) + 1))
+      assert "standalone" == decoded |> then(&Enum.at(&1, Enum.find_index(&1, fn x -> x == "mode" end) + 1))
     end
 
     test "encode_error" do

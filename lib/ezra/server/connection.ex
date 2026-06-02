@@ -79,6 +79,14 @@ defmodule Ezra.Server.Connection do
 
   # --- Command dispatch ---
 
+  defp dispatch({:hello, 2}, _state) do
+    RESP.encode_hello()
+  end
+
+  defp dispatch({:hello, _}, _state) do
+    RESP.encode_error("NOPROTO this server does not support requested protocol")
+  end
+
   defp dispatch({:client_setname}, _state) do
     RESP.encode_ok()
   end
