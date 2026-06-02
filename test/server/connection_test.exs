@@ -98,6 +98,13 @@ defmodule Ezra.Server.ConnectionTest do
     assert n == 0
   end
 
+  test "XACK with non-integer id returns error without killing connection", %{socket: socket} do
+    resp = send_command!(socket, ["XACK", "emails", "workers", "not-an-id"])
+    assert {:error, _} = resp
+    id = send_command!(socket, ["XADD", "q", "*", "payload", "still alive"])
+    assert is_binary(id)
+  end
+
   test "full XADD → XREADGROUP → XACK roundtrip", %{socket: socket} do
     id = send_command!(socket, ["XADD", "emails", "*", "payload", "roundtrip"])
 
@@ -128,15 +135,42 @@ defmodule Ezra.Server.ConnectionTest do
     assert Enum.at(resp, idx + 1) == 2
   end
 
-  test "HELLO 3 returns NOPROTO error", %{socket: socket} do
+  test "HELLO 3 returns flat array with proto 2", %{socket: socket} do
     resp = send_command!(socket, ["HELLO", "3"])
-    assert {:error, msg} = resp
-    assert String.starts_with?(msg, "NOPROTO")
+    assert is_list(resp)
+    idx = Enum.find_index(resp, &(&1 == "proto"))
+    assert Enum.at(resp, idx + 1) == 2
   end
 
   test "connection stays healthy after HELLO 2", %{socket: socket} do
     send_command!(socket, ["HELLO", "2"])
     id = send_command!(socket, ["XADD", "q", "*", "payload", "after_hello"])
+    assert is_binary(id)
+  end
+
+  test "connection stays healthy after HELLO 3", %{socket: socket} do
+    send_command!(socket, ["HELLO", "3"])
+    id = send_command!(socket, ["XADD", "q", "*", "payload", "after_hello3"])
+    assert is_binary(id)
+  end
+
+  # ---------------------------------------------------------------------------
+  # PING
+  # ---------------------------------------------------------------------------
+
+  test "PING returns PONG", %{socket: socket} do
+    resp = send_command!(socket, ["PING"])
+    assert {:simple, "PONG"} = resp
+  end
+
+  test "PING with message echoes the message", %{socket: socket} do
+    resp = send_command!(socket, ["PING", "health-check"])
+    assert "health-check" = resp
+  end
+
+  test "connection stays healthy after PING", %{socket: socket} do
+    send_command!(socket, ["PING"])
+    id = send_command!(socket, ["XADD", "q", "*", "payload", "after_ping"])
     assert is_binary(id)
   end
 
@@ -170,6 +204,13 @@ defmodule Ezra.Server.ConnectionTest do
   test "XDEL on unknown id returns 0", %{socket: socket} do
     n = send_command!(socket, ["XDEL", "emails", "9999999"])
     assert n == 0
+  end
+
+  test "XDEL with non-integer id returns 0 without killing connection", %{socket: socket} do
+    n = send_command!(socket, ["XDEL", "emails", "not-an-id"])
+    assert n == 0
+    id = send_command!(socket, ["XADD", "q", "*", "payload", "still alive"])
+    assert is_binary(id)
   end
 
   test "XDEL returns task to available - can be popped again", %{socket: socket} do
@@ -238,13 +279,13 @@ defmodule Ezra.Server.ConnectionTest do
   # ---------------------------------------------------------------------------
 
   test "unknown command returns error", %{socket: socket} do
-    resp = send_command!(socket, ["PING"])
+    resp = send_command!(socket, ["GET", "somekey"])
     assert {:error, msg} = resp
-    assert String.contains?(msg, "ping")
+    assert String.contains?(msg, "get")
   end
 
   test "connection survives unknown command", %{socket: socket} do
-    send_command!(socket, ["PING"])
+    send_command!(socket, ["GET", "somekey"])
     id = send_command!(socket, ["XADD", "q", "*", "payload", "ok"])
     assert is_binary(id)
   end

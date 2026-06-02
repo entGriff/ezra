@@ -79,12 +79,16 @@ defmodule Ezra.Server.Connection do
 
   # --- Command dispatch ---
 
-  defp dispatch({:hello, 2}, _state) do
+  defp dispatch({:hello, _}, _state) do
     RESP.encode_hello()
   end
 
-  defp dispatch({:hello, _}, _state) do
-    RESP.encode_error("NOPROTO this server does not support requested protocol")
+  defp dispatch({:ping, nil}, _state) do
+    RESP.encode({:simple, "PONG"})
+  end
+
+  defp dispatch({:ping, msg}, _state) do
+    RESP.encode(msg)
   end
 
   defp dispatch({:client_setname}, _state) do
@@ -118,23 +122,38 @@ defmodule Ezra.Server.Connection do
   end
 
   defp dispatch({:xack, _queue, id_str}, state) do
-    case Engine.ack(state.engine, String.to_integer(id_str)) do
-      :ok -> RESP.encode_xack_response(:ok)
-      {:error, :not_found} -> RESP.encode_xack_response(:not_found)
+    case parse_id(id_str) do
+      {:ok, id} ->
+        case Engine.ack(state.engine, id) do
+          :ok -> RESP.encode_xack_response(:ok)
+          {:error, :not_found} -> RESP.encode_xack_response(:not_found)
+        end
+      :error ->
+        RESP.encode_error("ERR invalid task id")
     end
   end
 
   defp dispatch({:xnack, _queue, id_str}, state) do
-    case Engine.nack(state.engine, String.to_integer(id_str)) do
-      {:ok, _} -> RESP.encode_ok()
-      {:error, :not_found} -> RESP.encode_error("ERR task not found")
+    case parse_id(id_str) do
+      {:ok, id} ->
+        case Engine.nack(state.engine, id) do
+          {:ok, _} -> RESP.encode_ok()
+          {:error, :not_found} -> RESP.encode_error("ERR task not found")
+        end
+      :error ->
+        RESP.encode_error("ERR invalid task id")
     end
   end
 
   defp dispatch({:xdel_nack, _queue, id_str}, state) do
-    case Engine.nack(state.engine, String.to_integer(id_str)) do
-      {:ok, _} -> RESP.encode(1)
-      {:error, :not_found} -> RESP.encode(0)
+    case parse_id(id_str) do
+      {:ok, id} ->
+        case Engine.nack(state.engine, id) do
+          {:ok, _} -> RESP.encode(1)
+          {:error, :not_found} -> RESP.encode(0)
+        end
+      :error ->
+        RESP.encode(0)
     end
   end
 
@@ -158,11 +177,19 @@ defmodule Ezra.Server.Connection do
 
   # --- Helpers ---
 
+  defp parse_id(str) do
+    case Integer.parse(str) do
+      {id, ""} when id > 0 -> {:ok, id}
+      _ -> :error
+    end
+  end
+
   defp fields_to_push_opts(fields) do
-    for {key, fn_convert} <- [{"ttl", &{:ttl_seconds, String.to_integer(&1)}},
-                               {"max_attempts", &{:max_attempts, String.to_integer(&1)}}],
+    for {key, tag} <- [{"ttl", :ttl_seconds}, {"max_attempts", :max_attempts}],
         val = fields[key],
         val != nil,
-        do: fn_convert.(val)
+        {n, ""} <- [Integer.parse(val)],
+        n > 0,
+        do: {tag, n}
   end
 end

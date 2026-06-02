@@ -91,6 +91,13 @@ defmodule Ezra.Server.RESP do
       ["HELLO", v | _] ->
         {:hello, parse_hello_proto(v)}
 
+      # PING [message]
+      ["PING"] ->
+        {:ping, nil}
+
+      ["PING", _msg] ->
+        {:ping, Enum.at(tokens, 1)}
+
       # CLIENT SETNAME <name>  (no-op - accepted for SDK compatibility)
       ["CLIENT", "SETNAME", _] ->
         {:client_setname}

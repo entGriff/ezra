@@ -275,9 +275,21 @@ defmodule Ezra.Server.RESPTest do
       assert RESP.parse_command(["XINFO", "STREAM", "emails"]) == {:xinfo_stream, "emails"}
     end
 
+    test "PING with no message" do
+      assert RESP.parse_command(["PING"]) == {:ping, nil}
+    end
+
+    test "PING with message" do
+      assert RESP.parse_command(["PING", "hello"]) == {:ping, "hello"}
+    end
+
+    test "PING is case-insensitive" do
+      assert {:ping, nil} = RESP.parse_command(["ping"])
+    end
+
     test "unknown command returns {:unknown, tokens}" do
-      assert {:unknown, ["PING"]} = RESP.parse_command(["PING"])
       assert {:unknown, ["GET", "key"]} = RESP.parse_command(["GET", "key"])
+      assert {:unknown, ["SET", "k", "v"]} = RESP.parse_command(["SET", "k", "v"])
     end
   end
 
