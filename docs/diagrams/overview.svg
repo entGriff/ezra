@@ -1,0 +1,224 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 470" width="900" height="470">
+  <!-- Background -->
+  <rect width="900" height="470" fill="#FBF0E3"/>
+
+  <!-- ============================================================
+       PATHS  (drawn before boxes so box borders sit on top cleanly)
+  ============================================================ -->
+
+  <!-- XADD: producers -> EZRA   rust/terracotta animated dashes -->
+  <path d="M 155,62  C 212,62  212,150 270,150" fill="none" stroke="#9B4A2E" stroke-width="1.5" stroke-dasharray="6 10" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="1.5s" values="16;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+  <path d="M 155,152 C 212,152 212,178 270,178" fill="none" stroke="#9B4A2E" stroke-width="1.5" stroke-dasharray="6 10" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="1.8s" values="16;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+  <path d="M 155,242 C 212,242 212,206 270,206" fill="none" stroke="#9B4A2E" stroke-width="1.5" stroke-dasharray="6 10" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="1.4s" values="16;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+  <path d="M 155,332 C 212,332 212,234 270,234" fill="none" stroke="#9B4A2E" stroke-width="1.5" stroke-dasharray="6 10" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="2.0s" values="16;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+
+  <!-- XREADGROUP: EZRA -> workers   warm walnut animated dashes -->
+  <path d="M 560,152 C 637,152 637,112 715,112" fill="none" stroke="#7A5228" stroke-width="1.5" stroke-dasharray="6 10" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="1.4s" values="16;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+  <path d="M 560,205 L 715,205" fill="none" stroke="#7A5228" stroke-width="1.5" stroke-dasharray="6 10" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="1.6s" values="16;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+  <path d="M 560,258 C 637,258 637,298 715,298" fill="none" stroke="#7A5228" stroke-width="1.5" stroke-dasharray="6 10" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="1.8s" values="16;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+
+  <!-- XACK return: worker 1 -> EZRA   sage green thin line -->
+  <path d="M 715,128 C 638,128 638,170 560,170" fill="none" stroke="#3D6B4A" stroke-width="1.2" stroke-dasharray="5 8" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="2.0s" values="13;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+
+  <!-- XDEL/nack return: worker 3 -> EZRA   muted brick dashed -->
+  <path d="M 715,314 C 638,314 638,272 560,272" fill="none" stroke="#8A3030" stroke-width="1.2" stroke-dasharray="4 8" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="2.4s" values="12;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+
+  <!-- EZRA -> SQLite   sage green persist line -->
+  <path d="M 365,315 C 365,337 350,337 350,364" fill="none" stroke="#3D6B4A" stroke-width="1.4" stroke-dasharray="4 6" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="1.2s" values="10;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+
+  <!-- EZRA -> Dead letters   brick red -->
+  <path d="M 475,315 C 475,330 490,330 490,348" fill="none" stroke="#8A3030" stroke-width="1.2" stroke-dasharray="4 6" stroke-linecap="round">
+    <animate attributeName="stroke-dashoffset" dur="1.8s" values="10;0" repeatCount="indefinite" calcMode="linear"/>
+  </path>
+
+  <!-- SQLite <-> Dead letters: both live in the same db -->
+  <path d="M 388,383 C 418,383 418,367 448,367"
+        fill="none" stroke="#9B8060" stroke-width="1" stroke-dasharray="3 5" stroke-linecap="round" opacity="0.55"/>
+
+  <!-- ============================================================
+       BOXES  (on top of path lines)
+  ============================================================ -->
+
+  <!-- EZRA -->
+  <rect x="270" y="95" width="290" height="220" rx="10" fill="#FEF7EC" stroke="#6B3520" stroke-width="2"/>
+
+  <!-- Producer boxes -->
+  <rect x="20" y="45"  width="135" height="34" rx="6" fill="#FEFAF5" stroke="#9B4A2E" stroke-width="1.5"/>
+  <rect x="20" y="135" width="135" height="34" rx="6" fill="#FEFAF5" stroke="#9B4A2E" stroke-width="1.5"/>
+  <rect x="20" y="225" width="135" height="34" rx="6" fill="#FEFAF5" stroke="#9B4A2E" stroke-width="1.5"/>
+  <rect x="20" y="315" width="135" height="34" rx="6" fill="#FEFAF5" stroke="#9B4A2E" stroke-width="1.5"/>
+
+  <!-- Worker boxes -->
+  <rect x="715" y="95"  width="145" height="34" rx="6" fill="#FEFAF5" stroke="#7A5228" stroke-width="1.5"/>
+  <rect x="715" y="188" width="145" height="34" rx="6" fill="#FEFAF5" stroke="#7A5228" stroke-width="1.5"/>
+  <rect x="715" y="281" width="145" height="34" rx="6" fill="#FEFAF5" stroke="#7A5228" stroke-width="1.5"/>
+
+  <!-- SQLite cylinder: sides + bottom arc, then top ellipse on top -->
+  <path d="M 312,368 L 312,398 A 38,9 0 0 0 388,398 L 388,368"
+        fill="#F3FAF4" stroke="#3D6B4A" stroke-width="1.5"/>
+  <ellipse cx="350" cy="368" rx="38" ry="9"
+           fill="#E8F5EA" stroke="#3D6B4A" stroke-width="1.5"/>
+
+  <!-- Dead letters box -->
+  <rect x="448" y="343" width="152" height="48" rx="6" fill="#FBF3F3" stroke="#8A3030" stroke-width="1.5"/>
+
+  <!-- ============================================================
+       ARROWHEADS  (on top of boxes)
+  ============================================================ -->
+
+  <!-- XADD tips at EZRA left edge (x=270), pointing right -->
+  <polygon points="264,146 264,154 270,150" fill="#9B4A2E"/>
+  <polygon points="264,174 264,182 270,178" fill="#9B4A2E"/>
+  <polygon points="264,202 264,210 270,206" fill="#9B4A2E"/>
+  <polygon points="264,230 264,238 270,234" fill="#9B4A2E"/>
+
+  <!-- XREADGROUP tips at worker left edge (x=715), pointing right -->
+  <polygon points="709,108 709,116 715,112" fill="#7A5228"/>
+  <polygon points="709,201 709,209 715,205" fill="#7A5228"/>
+  <polygon points="709,294 709,302 715,298" fill="#7A5228"/>
+
+  <!-- XACK tip at EZRA right edge (x=560), pointing left -->
+  <polygon points="566,166 566,174 560,170" fill="#3D6B4A"/>
+
+  <!-- XDEL tip at EZRA right edge (x=560), pointing left -->
+  <polygon points="566,268 566,276 560,272" fill="#8A3030"/>
+
+  <!-- SQLite arrow pointing down -->
+  <polygon points="345,362 355,362 350,368" fill="#3D6B4A"/>
+
+  <!-- Dead letters arrow pointing down -->
+  <polygon points="485,344 495,344 490,350" fill="#8A3030"/>
+
+  <!-- ============================================================
+       EZRA INTERNALS
+  ============================================================ -->
+
+  <text x="415" y="131"
+        text-anchor="middle"
+        font-family="Georgia, 'Palatino Linotype', serif"
+        font-size="27" font-weight="bold"
+        fill="#3D1A0A" letter-spacing="6">EZRA</text>
+
+  <text x="415" y="152"
+        text-anchor="middle"
+        font-family="'Courier New', Courier, monospace"
+        font-size="13" fill="#6B3520">:42002  ·  Redis wire protocol</text>
+
+  <line x1="290" y1="162" x2="540" y2="162" stroke="#DDD0BB" stroke-width="1"/>
+
+  <!-- Task queue slots -->
+  <rect x="325" y="196" width="24" height="18" rx="3" fill="#FAE8D0" stroke="#C48060" stroke-width="1"/>
+  <rect x="354" y="196" width="24" height="18" rx="3" fill="#F5D0A8" stroke="#C48060" stroke-width="1">
+    <animate attributeName="fill" dur="2.6s" values="#F5D0A8;#EDBA80;#F5D0A8" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+  </rect>
+  <rect x="383" y="196" width="24" height="18" rx="3" fill="#FAE8D0" stroke="#C48060" stroke-width="1"/>
+  <text x="420" y="209"
+        font-family="'Courier New', monospace" font-size="11"
+        fill="#C48060" opacity="0.6">· · ·</text>
+
+  <text x="393" y="232"
+        text-anchor="middle"
+        font-family="Georgia, serif" font-size="10"
+        fill="#9B6040" opacity="0.75" letter-spacing="1">task queue</text>
+
+  <text x="415" y="268"
+        text-anchor="middle"
+        font-family="Georgia, serif" font-size="11"
+        fill="#7A4828" opacity="0.8">Erlang / OTP</text>
+
+  <text x="415" y="285"
+        text-anchor="middle"
+        font-family="'Courier New', monospace" font-size="9"
+        fill="#9B6040" opacity="0.55">visibility_timeout · max_attempts</text>
+
+  <!-- ============================================================
+       BOX LABELS
+  ============================================================ -->
+
+  <!-- Producers -->
+  <text x="87" y="67"  text-anchor="middle" font-family="Georgia, serif" font-size="13" fill="#1A1209">Python API</text>
+  <text x="87" y="157" text-anchor="middle" font-family="Georgia, serif" font-size="13" fill="#1A1209">Node.js</text>
+  <text x="87" y="247" text-anchor="middle" font-family="Georgia, serif" font-size="13" fill="#1A1209">Go service</text>
+  <text x="87" y="337" text-anchor="middle" font-family="Georgia, serif" font-size="13" fill="#1A1209">cron job</text>
+
+  <!-- Workers -->
+  <text x="787" y="117" text-anchor="middle" font-family="Georgia, serif" font-size="13" fill="#1A1209">worker 1</text>
+  <text x="787" y="210" text-anchor="middle" font-family="Georgia, serif" font-size="13" fill="#1A1209">worker 2</text>
+  <text x="787" y="303" text-anchor="middle" font-family="Georgia, serif" font-size="13" fill="#1A1209">worker 3</text>
+
+  <!-- SQLite -->
+  <text x="350" y="384" text-anchor="middle" font-family="Georgia, serif"         font-size="11" font-weight="bold" fill="#2E5238">ezra.db</text>
+  <text x="350" y="397" text-anchor="middle" font-family="'Courier New', monospace" font-size="9"  fill="#3D6B4A" opacity="0.8">SQLite</text>
+
+  <!-- Dead letters -->
+  <text x="524" y="364" text-anchor="middle" font-family="Georgia, serif"         font-size="11" font-weight="bold" fill="#6B2020">dead letters</text>
+  <text x="524" y="379" text-anchor="middle" font-family="'Courier New', monospace" font-size="9"  fill="#8A3030" opacity="0.8">max_attempts exceeded</text>
+
+  <!-- ============================================================
+       PATH LABELS
+  ============================================================ -->
+
+  <!-- Left side: xadd -->
+  <text x="213" y="78"
+        text-anchor="middle"
+        font-family="'Courier New', monospace" font-size="10"
+        fill="#9B4A2E" opacity="0.8">xadd</text>
+
+  <!-- Right side column, centered at x=637 -->
+  <text x="637" y="80"
+        text-anchor="middle"
+        font-family="'Courier New', monospace" font-size="10"
+        fill="#7A5228" opacity="0.8">xreadgroup</text>
+  <text x="637" y="93"
+        text-anchor="middle"
+        font-family="Georgia, serif" font-size="9" font-style="italic"
+        fill="#7A5228" opacity="0.65">pull model</text>
+
+  <text x="637" y="148"
+        text-anchor="middle"
+        font-family="'Courier New', monospace" font-size="10"
+        fill="#3D6B4A" opacity="0.8">xack</text>
+
+  <text x="637" y="306"
+        text-anchor="middle"
+        font-family="'Courier New', monospace" font-size="10"
+        fill="#8A3030" opacity="0.8">xdel / nack</text>
+
+  <!-- Below EZRA: persist and exhausted -->
+  <text x="378" y="336"
+        font-family="'Courier New', monospace" font-size="9"
+        fill="#3D6B4A" opacity="0.65">persist</text>
+
+  <text x="497" y="332"
+        font-family="'Courier New', monospace" font-size="9"
+        fill="#8A3030" opacity="0.65">exhausted</text>
+
+  <!-- ============================================================
+       SECTION LABELS
+  ============================================================ -->
+
+  <text x="87"  y="26" text-anchor="middle" font-family="Georgia, serif" font-size="10" letter-spacing="2.5" fill="#9B4A2E" opacity="0.85">PRODUCERS</text>
+  <text x="415" y="26" text-anchor="middle" font-family="Georgia, serif" font-size="10" letter-spacing="2.5" fill="#6B3520" opacity="0.85">EZRA SERVER</text>
+  <text x="787" y="26" text-anchor="middle" font-family="Georgia, serif" font-size="10" letter-spacing="2.5" fill="#7A5228" opacity="0.85">WORKERS</text>
+
+</svg>

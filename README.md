@@ -83,36 +83,7 @@ Any language with a Redis client works the same way - Python, Node.js, Go, Ruby,
 
 ## The big picture
 
-```mermaid
-flowchart LR
-    subgraph producers ["Producers"]
-        S1["Python API"]
-        S2["Node.js"]
-        S3["Go service"]
-        S4["cron job"]
-    end
-
-    subgraph server ["Ezra server"]
-        E(["Ezra :42002"])
-        DB[("ezra.db")]
-        E --- DB
-    end
-
-    subgraph workers ["Workers  (pull tasks on demand)"]
-        W1["worker 1"]
-        W2["worker 2"]
-        W3["worker 3"]
-    end
-
-    S1 & S2 & S3 & S4 -->|push| E
-    E -->|task| W1 & W2 & W3
-
-    style E fill:#4f46e5,color:#fff,stroke:none
-    style DB fill:#0f172a,color:#fff,stroke:none
-    style server fill:#eef2ff,stroke:#4f46e5,color:#000
-    style producers fill:#f0fdf4,stroke:#16a34a,color:#000
-    style workers fill:#eff6ff,stroke:#2563eb,color:#000
-```
+![EZRA overview](docs/diagrams/overview.svg)
 
 Services and workers can run on any machine in any language. Workers actively pull tasks when ready - Ezra delivers one immediately if available, or holds the connection until one arrives. Everything persists to `ezra.db` on the server.
 
