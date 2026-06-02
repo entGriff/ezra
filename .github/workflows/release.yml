@@ -19,10 +19,13 @@ jobs:
         include:
           - target: linux_x86_64
             runner: ubuntu-22.04
+            image_os: ubuntu22
           - target: linux_arm64
             runner: ubuntu-22.04-arm
+            image_os: ubuntu22
           - target: macos_arm64
             runner: macos-14       # Apple Silicon
+            image_os: macos14
 
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +35,8 @@ jobs:
         with:
           elixir-version: "1.17"
           otp-version: "27"
+        env:
+          ImageOS: ${{ matrix.image_os }}
 
       # Burrito v1.3.0 hard-requires Zig 0.14.0 exactly - any other version exits 1.
       - name: Install Zig 0.14.0
