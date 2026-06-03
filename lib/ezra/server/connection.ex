@@ -32,7 +32,8 @@ defmodule Ezra.Server.Connection do
       socket: socket,
       transport: transport,
       engine: opts.engine,
-      buf: <<>>
+      buf: <<>>,
+      proto: 2
     })
   end
 
@@ -58,7 +59,9 @@ defmodule Ezra.Server.Connection do
   defp process_buffer(state) do
     case RESP.decode(state.buf) do
       {:ok, tokens, rest} when is_list(tokens) ->
-        response = dispatch(RESP.parse_command(tokens), state)
+        cmd   = RESP.parse_command(tokens)
+        state = update_proto(state, cmd)
+        response = dispatch(cmd, state)
         apply(state.transport, :send, [state.socket, IO.iodata_to_binary(response)])
         process_buffer(%{state | buf: rest})
 
@@ -79,8 +82,8 @@ defmodule Ezra.Server.Connection do
 
   # --- Command dispatch ---
 
-  defp dispatch({:hello, _}, _state) do
-    RESP.encode_hello()
+  defp dispatch({:hello, v}, _state) do
+    RESP.encode_hello(v)
   end
 
   defp dispatch({:ping, nil}, _state) do
@@ -93,6 +96,10 @@ defmodule Ezra.Server.Connection do
 
   defp dispatch({:client_setname}, _state) do
     RESP.encode_ok()
+  end
+
+  defp dispatch({:info}, _state) do
+    RESP.encode_info()
   end
 
   defp dispatch({:xadd, queue, fields}, state) do
@@ -111,13 +118,13 @@ defmodule Ezra.Server.Connection do
     case Engine.pop(state.engine, queue, worker_id: consumer, block: block_ms) do
       {:ok, task} ->
         task = %{task | id: Integer.to_string(task.id)}
-        RESP.encode_pop_response(queue, task)
+        RESP.encode_pop_response(queue, task, state.proto)
 
       {:empty} when block_ms > 0 ->
         RESP.encode_block_timeout()
 
       {:empty} ->
-        RESP.encode_pop_response(queue, nil)
+        RESP.encode_pop_response(queue, nil, state.proto)
     end
   end
 
@@ -176,6 +183,11 @@ defmodule Ezra.Server.Connection do
   end
 
   # --- Helpers ---
+
+  # Store the negotiated protocol version so XREADGROUP can pick the right
+  # response encoding.
+  defp update_proto(state, {:hello, v}), do: %{state | proto: v}
+  defp update_proto(state, _), do: state
 
   defp parse_id(str) do
     case Integer.parse(str) do

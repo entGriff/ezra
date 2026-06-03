@@ -353,19 +353,27 @@ defmodule Ezra.Server.RESPTest do
       assert Enum.at(decoded, idx + 1) == "emails"
     end
 
-    test "encode_hello returns a flat array with proto 2" do
-      wire = IO.iodata_to_binary(RESP.encode_hello())
+    test "encode_hello/1 for HELLO 2 returns flat RESP2 array with proto 2" do
+      wire = IO.iodata_to_binary(RESP.encode_hello(2))
       {:ok, decoded, ""} = RESP.decode(wire)
       assert is_list(decoded)
       idx = Enum.find_index(decoded, &(&1 == "proto"))
       assert Enum.at(decoded, idx + 1) == 2
     end
 
-    test "encode_hello includes server and mode fields" do
-      wire = IO.iodata_to_binary(RESP.encode_hello())
+    test "encode_hello/1 for HELLO 2 includes server and mode fields" do
+      wire = IO.iodata_to_binary(RESP.encode_hello(2))
       {:ok, decoded, ""} = RESP.decode(wire)
       assert "ezra" == decoded |> then(&Enum.at(&1, Enum.find_index(&1, fn x -> x == "server" end) + 1))
       assert "standalone" == decoded |> then(&Enum.at(&1, Enum.find_index(&1, fn x -> x == "mode" end) + 1))
+    end
+
+    test "encode_hello/1 for HELLO 3 returns RESP3 map with proto 3" do
+      wire = IO.iodata_to_binary(RESP.encode_hello(3))
+      {:ok, decoded, ""} = RESP.decode(wire)
+      assert is_map(decoded)
+      assert Map.get(decoded, "proto") == 3
+      assert Map.get(decoded, "server") == "ezra"
     end
 
     test "encode_error" do

@@ -38,14 +38,15 @@ defmodule Ezra.Integration.ClientCompatTest do
     sock = connect(port)
 
     hello = cmd!(sock, ["HELLO", "3"])
-    assert is_list(hello)
-    assert field(hello, "proto") == 2
-    assert field(hello, "server") == "ezra"
+    assert is_map(hello)
+    assert Map.get(hello, "proto") == 3
+    assert Map.get(hello, "server") == "ezra"
 
     id = cmd!(sock, ["XADD", "jobs", "*", "payload", "do-work"])
     assert String.match?(id, ~r/^\d+$/)
 
-    [[_stream, [[^id, fields]]]] = cmd!(sock, ["XREADGROUP", "GROUP", "g", "w1",
+    # RESP3: XREADGROUP returns a map %{stream => [[id, fields]]}
+    %{"jobs" => [[^id, fields]]} = cmd!(sock, ["XREADGROUP", "GROUP", "g", "w1",
                                                "COUNT", "1", "STREAMS", "jobs", ">"])
     assert field(fields, "payload") == "do-work"
 
@@ -60,8 +61,8 @@ defmodule Ezra.Integration.ClientCompatTest do
     assert {:simple, "OK"} = cmd!(sock, ["CLIENT", "SETNAME", "myapp-worker-1"])
 
     id = cmd!(sock, ["XADD", "q", "*", "payload", "named-worker"])
-    [[_, [[^id, _]]]] = cmd!(sock, ["XREADGROUP", "GROUP", "g", "myapp-worker-1",
-                                    "COUNT", "1", "STREAMS", "q", ">"])
+    %{"q" => [[^id, _]]} = cmd!(sock, ["XREADGROUP", "GROUP", "g", "myapp-worker-1",
+                                       "COUNT", "1", "STREAMS", "q", ">"])
   end
 
   test "redis-py 5.x: HELLO 3 then XNACK returns task for retry", %{port: port} do
@@ -75,8 +76,8 @@ defmodule Ezra.Integration.ClientCompatTest do
     assert {:simple, "OK"} = cmd!(sock, ["XNACK", "q", "g", id])
 
     # Task must be retrievable again
-    [[_, [[^id, _]]]] = cmd!(sock, ["XREADGROUP", "GROUP", "g", "w",
-                                    "COUNT", "1", "STREAMS", "q", ">"])
+    %{"q" => [[^id, _]]} = cmd!(sock, ["XREADGROUP", "GROUP", "g", "w",
+                                       "COUNT", "1", "STREAMS", "q", ">"])
   end
 
   test "redis-py 5.x: blocking pop resolves when another connection pushes",
@@ -99,7 +100,7 @@ defmodule Ezra.Integration.ClientCompatTest do
     Process.sleep(100)
     pushed_id = cmd!(pusher, ["XADD", "bq", "*", "payload", "wake"])
 
-    assert_receive {:pop, [["bq", [[^pushed_id, _]]]]}, 4_000
+    assert_receive {:pop, %{"bq" => [[^pushed_id, _]]}}, 4_000
   end
 
   # --- go-redis ---
@@ -109,13 +110,14 @@ defmodule Ezra.Integration.ClientCompatTest do
     sock = connect(port)
 
     hello = cmd!(sock, ["HELLO", "3"])
-    assert field(hello, "proto") == 2
+    assert is_map(hello)
+    assert Map.get(hello, "proto") == 3
 
     cmd!(sock, ["CLIENT", "SETNAME", "go-redis-worker"])
 
     id = cmd!(sock, ["XADD", "tasks", "*", "payload", "from-go"])
-    [[_, [[^id, _]]]] = cmd!(sock, ["XREADGROUP", "GROUP", "g", "go-redis-worker",
-                                    "COUNT", "1", "STREAMS", "tasks", ">"])
+    %{"tasks" => [[^id, _]]} = cmd!(sock, ["XREADGROUP", "GROUP", "g", "go-redis-worker",
+                                           "COUNT", "1", "STREAMS", "tasks", ">"])
     assert 1 = cmd!(sock, ["XACK", "tasks", "g", id])
   end
 

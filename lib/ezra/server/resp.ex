@@ -102,6 +102,10 @@ defmodule Ezra.Server.RESP do
       ["CLIENT", "SETNAME", _] ->
         {:client_setname}
 
+      # INFO [section] - ioredis sends this on connect as a ready-check
+      ["INFO" | _] ->
+        {:info}
+
       # XADD <queue> * payload <data> [field value ...]
       ["XADD", _queue, _id | _] ->
         {:xadd, Enum.at(tokens, 1), parse_fields(Enum.drop(tokens, 3))}
@@ -151,20 +155,44 @@ defmodule Ezra.Server.RESP do
   # XADD → task id as bulk string
   def encode_push_response(task_id) when is_binary(task_id), do: encode(task_id)
 
-  # XREADGROUP → [[stream_name, [[id, [field, val, ...]]]]]
-  # Matches Redis wire format so redis-py parses without any wrapper code.
-  def encode_pop_response(queue, nil) do
-    # Non-blocking read with no messages: return stream with empty entries list.
-    encode([[queue, []]])
+  # XREADGROUP response format depends on negotiated protocol.
+  #
+  # RESP2 (proto < 3): flat nested array [[stream, [[id, fields]]]]
+  #   redis-py calls parse_stream / parse_xread on this.
+  #
+  # RESP3 (proto >= 3): map %{stream => [[id, fields]]}
+  #   redis-py calls parse_xread_resp3_to_resp2_legacy on this, which
+  #   expects a dict with .items(). Returns same logical structure to caller.
+  #
+  # 2-arg form defaults to RESP2 (used by tests and non-HELLO connections).
+  def encode_pop_response(queue, task), do: encode_pop_response(queue, task, 2)
+
+  # RESP3: outer container is a map so redis-py can call .items() on it.
+  # Field lists stay as flat arrays - parse_stream_list handles both formats.
+  def encode_pop_response(queue, nil, proto) when proto >= 3 do
+    encode(%{queue => []})
   end
 
-  def encode_pop_response(queue, task) do
+  def encode_pop_response(queue, task, proto) when proto >= 3 do
     fields = [
       "payload", task.payload,
       "attempts", Integer.to_string(task.attempts),
       "max_attempts", Integer.to_string(task.max_attempts)
     ]
+    encode(%{queue => [[task.id, fields]]})
+  end
 
+  # RESP2: flat nested array [[stream, [[id, fields]]]]
+  def encode_pop_response(queue, nil, _proto) do
+    encode([[queue, []]])
+  end
+
+  def encode_pop_response(queue, task, _proto) do
+    fields = [
+      "payload", task.payload,
+      "attempts", Integer.to_string(task.attempts),
+      "max_attempts", Integer.to_string(task.max_attempts)
+    ]
     encode([[queue, [[task.id, fields]]]])
   end
 
@@ -201,9 +229,30 @@ defmodule Ezra.Server.RESP do
     ])
   end
 
-  # HELLO → flat RESP2 array that clients interpret as a map.
-  # The "proto": 2 entry confirms RESP2 negotiation to the client.
-  def encode_hello() do
+  # HELLO response format depends on the requested version:
+  #
+  #   HELLO 3+ → RESP3 map (%N). redis-py 5.x in protocol=3 mode calls
+  #              handshake_metadata.get(b"proto") and requires a dict, not a list.
+  #              We confirm proto:3 so the client stays happy; our actual command
+  #              responses use RESP2 wire types (bulk strings, integers, arrays),
+  #              which are all valid RESP3 and parsed correctly by any RESP3 client.
+  #
+  #   HELLO 2 / HELLO → RESP2 flat array (*N). Classic clients interpret this as
+  #              a key-value list and extract proto:2.
+  #
+  def encode_hello(v) when is_integer(v) and v >= 3 do
+    encode(%{
+      "server"  => "ezra",
+      "version" => @version,
+      "proto"   => 3,
+      "id"      => 0,
+      "mode"    => "standalone",
+      "role"    => "master",
+      "modules" => []
+    })
+  end
+
+  def encode_hello(_v) do
     encode([
       "server",  "ezra",
       "version", @version,
@@ -213,6 +262,13 @@ defmodule Ezra.Server.RESP do
       "role",    "master",
       "modules", []
     ])
+  end
+
+  # INFO stub - enough for ioredis and other clients that send INFO as a ready-check.
+  # Returns a minimal bulk-string response that satisfies version/loading checks.
+  def encode_info() do
+    body = "# Server\r\nredis_version:7.0.0\r\nredis_mode:standalone\r\nloading:0\r\n# Replication\r\nrole:master\r\n"
+    encode(body)
   end
 
   def encode_error(msg) when is_binary(msg), do: encode({:error, msg})

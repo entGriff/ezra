@@ -7,3 +7,8 @@
 .elixir_ls/
 erl_crash.dump
 .DS_Store
+
+
+# Internal-only dev scripts
+scripts/test-compat.sh
+docker/Dockerfile.run
