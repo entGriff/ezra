@@ -45,7 +45,7 @@ That is the entire server setup. Now, from any machine that can reach that port:
 ```python
 import redis
 
-r = redis.Redis(host="localhost", port=42002, decode_responses=True)
+r = redis.Redis(host="localhost", port=42002, decode_responses=True, protocol=3)
 
 # Push a task into the "emails" queue.
 # Queues do not need to be created in advance - the first push creates one.
@@ -57,24 +57,23 @@ r.xadd("emails", {"payload": '{"to": "alice@example.com"}'})
 ```python
 import redis
 
-r = redis.Redis(host="localhost", port=42002, decode_responses=True)
+r = redis.Redis(host="localhost", port=42002, decode_responses=True, protocol=3)
 
 while True:
     # Ask Ezra for the next task from "emails".
-    # "workers"    - consumer group name, required by the Redis wire protocol but ignored by Ezra.
-    # "worker-1"   - this specific worker's identity (each process needs a unique name).
+    # "workers"       - consumer group name, required by the wire protocol but ignored by Ezra.
+    # "worker-1"      - this worker's identity (each process needs a unique name).
     # {"emails": ">"} - give me the next undelivered task from this queue.
-    # block=0      - wait indefinitely; Ezra delivers the task the moment one arrives.
+    # block=0         - wait indefinitely; Ezra delivers the task the moment one arrives.
     results = r.xreadgroup("workers", "worker-1", {"emails": ">"}, count=1, block=0)
 
     if results:
-        _, [(task_id, fields)] = results[0]
+        for task_id, fields in results["emails"]:
+            send_email(fields["payload"])  # your processing code here
 
-        send_email(fields["payload"])  # your processing code here
-
-        # Acknowledge success. Without this, Ezra re-delivers the task after the
-        # visibility timeout (default 30 seconds).
-        r.xack("emails", "workers", task_id)
+            # Acknowledge success. Without this, Ezra re-delivers the task after the
+            # visibility timeout (default 30 seconds).
+            r.xack("emails", "workers", task_id)
 ```
 
 Any language with a Redis client works the same way - Python, Node.js, Go, Ruby, Java. Point the client at port 42002 instead of Redis.
@@ -119,7 +118,7 @@ One binary - you just run it and can actually touch the data anytime you want.
 
 ## How it works
 
-EZRA speaks the same **wire protocol** that Redis uses - a simple text format called RESP. Every Redis client library in every language already knows how to speak it. Since EZRA understands the same format, those libraries work with EZRA without modification. You just point the client at a different port.
+EZRA speaks **RESP3** - the same wire protocol Redis uses. Every Redis client library in every language already knows how to speak it. Point the client at EZRA's port instead of Redis and it works without modification.
 
 The specific commands EZRA implements come from **Redis Streams** - the part of Redis built around the idea that a message must be explicitly acknowledged before it is considered done:
 

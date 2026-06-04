@@ -267,6 +267,38 @@ defmodule Ezra.Server.RESPTest do
       assert {:client_setname} = RESP.parse_command(["client", "setname", "x"])
     end
 
+    test "CLIENT NO-EVICT parses to client_no_evict" do
+      assert RESP.parse_command(["CLIENT", "NO-EVICT", "ON"]) == {:client_no_evict}
+      assert RESP.parse_command(["CLIENT", "NO-EVICT", "OFF"]) == {:client_no_evict}
+    end
+
+    test "CLIENT NO-TOUCH parses to client_no_touch" do
+      assert RESP.parse_command(["CLIENT", "NO-TOUCH", "ON"]) == {:client_no_touch}
+    end
+
+    test "CLIENT GETNAME parses to client_getname" do
+      assert RESP.parse_command(["CLIENT", "GETNAME"]) == {:client_getname}
+    end
+
+    test "CLIENT ID parses to client_id" do
+      assert RESP.parse_command(["CLIENT", "ID"]) == {:client_id}
+    end
+
+    test "COMMAND and sub-commands parse to command" do
+      assert RESP.parse_command(["COMMAND"]) == {:command}
+      assert RESP.parse_command(["COMMAND", "COUNT"]) == {:command}
+      assert RESP.parse_command(["COMMAND", "DOCS", "XADD"]) == {:command}
+    end
+
+    test "RESET parses to reset" do
+      assert RESP.parse_command(["RESET"]) == {:reset}
+    end
+
+    test "SELECT parses to select" do
+      assert RESP.parse_command(["SELECT", "0"]) == {:select}
+      assert RESP.parse_command(["SELECT", "3"]) == {:select}
+    end
+
     test "XLEN" do
       assert RESP.parse_command(["XLEN", "emails"]) == {:xlen, "emails"}
     end
@@ -303,10 +335,14 @@ defmodule Ezra.Server.RESPTest do
       assert wire == "$12\r\n1234567890-0\r\n"
     end
 
-    test "encode_pop_response nil task returns stream with empty entries" do
+    test "encode_pop_response nil task (RESP2) returns null" do
       wire = IO.iodata_to_binary(RESP.encode_pop_response("emails", nil))
-      # [[stream_name, []]]
-      assert {:ok, [["emails", []]], ""} = RESP.decode(wire)
+      assert {:ok, nil, ""} = RESP.decode(wire)
+    end
+
+    test "encode_pop_response nil task (RESP3) returns native null" do
+      wire = IO.iodata_to_binary(RESP.encode_pop_response("emails", nil, 3))
+      assert wire == "_\r\n"
     end
 
     test "encode_pop_response with task returns nested stream format" do
@@ -326,8 +362,12 @@ defmodule Ezra.Server.RESPTest do
       assert Enum.at(fields, Enum.find_index(fields, &(&1 == "payload")) + 1) == "hello"
     end
 
-    test "encode_block_timeout returns null bulk string" do
-      assert IO.iodata_to_binary(RESP.encode_block_timeout()) == "$-1\r\n"
+    test "encode_block_timeout RESP2 returns null bulk string" do
+      assert IO.iodata_to_binary(RESP.encode_block_timeout(2)) == "$-1\r\n"
+    end
+
+    test "encode_block_timeout RESP3 returns native null" do
+      assert IO.iodata_to_binary(RESP.encode_block_timeout(3)) == "_\r\n"
     end
 
     test "encode_xack_response :ok → 1" do
@@ -345,12 +385,23 @@ defmodule Ezra.Server.RESPTest do
       assert RESP.decode(wire) == {:ok, 7, ""}
     end
 
-    test "encode_xinfo_response" do
+    test "encode_xinfo_response RESP2 returns flat list" do
       wire = IO.iodata_to_binary(RESP.encode_xinfo_response(%{queue: "emails", length: 5, dead: 1}))
       {:ok, decoded, ""} = RESP.decode(wire)
       assert is_list(decoded)
       idx = Enum.find_index(decoded, &(&1 == "name"))
       assert Enum.at(decoded, idx + 1) == "emails"
+    end
+
+    test "encode_xinfo_response RESP3 returns map" do
+      wire = IO.iodata_to_binary(RESP.encode_xinfo_response(%{queue: "emails", length: 5, dead: 1}, 3))
+      {:ok, decoded, ""} = RESP.decode(wire)
+      assert is_map(decoded)
+      assert Map.get(decoded, "name") == "emails"
+      assert Map.get(decoded, "length") == 5
+      assert Map.get(decoded, "dead-letter-length") == 1
+      # nil entries use native RESP3 null
+      assert Map.get(decoded, "first-entry") == nil
     end
 
     test "encode_hello/1 for HELLO 2 returns flat RESP2 array with proto 2" do

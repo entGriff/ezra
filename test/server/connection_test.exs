@@ -53,10 +53,10 @@ defmodule Ezra.Server.ConnectionTest do
   # XREADGROUP (non-blocking)
   # ---------------------------------------------------------------------------
 
-  test "XREADGROUP on empty queue returns stream with empty entries", %{socket: socket} do
+  test "XREADGROUP on empty queue returns null", %{socket: socket} do
     result = send_command!(socket, ["XREADGROUP", "GROUP", "workers", "w1",
                                      "COUNT", "1", "STREAMS", "emails", ">"])
-    assert [["emails", []]] = result
+    assert is_nil(result)
   end
 
   test "XREADGROUP returns task after XADD", %{socket: socket} do

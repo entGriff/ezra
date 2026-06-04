@@ -103,6 +103,17 @@ defmodule Ezra.Integration.ClientCompatTest do
     assert_receive {:pop, %{"bq" => [[^pushed_id, _]]}}, 4_000
   end
 
+  test "redis-py 5.x: blocking pop returns RESP3 null on timeout", %{port: port} do
+    sock = connect(port)
+    cmd!(sock, ["HELLO", "3"])
+
+    # Empty queue - blocking read must time out and return nil, not $-1
+    result = cmd!(sock, ["XREADGROUP", "GROUP", "g", "w",
+                         "COUNT", "1", "BLOCK", "200", "STREAMS", "empty-q", ">"],
+                 timeout: 2_000)
+    assert is_nil(result)
+  end
+
   # --- go-redis ---
   # Sends HELLO 3 followed by CLIENT SETNAME on every connection.
 
@@ -174,6 +185,59 @@ defmodule Ezra.Integration.ClientCompatTest do
     assert "health-check" = cmd!(sock, ["PING", "health-check"])
   end
 
+  # --- node-redis ---
+  # Sends HELLO 3 followed by CLIENT NO-EVICT ON and CLIENT NO-TOUCH ON on every connect.
+
+  test "node-redis: HELLO 3 + CLIENT NO-EVICT + CLIENT NO-TOUCH + full workflow",
+       %{port: port} do
+    sock = connect(port)
+
+    hello = cmd!(sock, ["HELLO", "3"])
+    assert is_map(hello)
+    assert Map.get(hello, "proto") == 3
+
+    assert {:simple, "OK"} = cmd!(sock, ["CLIENT", "NO-EVICT", "ON"])
+    assert {:simple, "OK"} = cmd!(sock, ["CLIENT", "NO-TOUCH", "ON"])
+
+    id = cmd!(sock, ["XADD", "jobs", "*", "payload", "node-redis-task"])
+    %{"jobs" => [[^id, _]]} = cmd!(sock, ["XREADGROUP", "GROUP", "g", "w",
+                                          "COUNT", "1", "STREAMS", "jobs", ">"])
+    assert 1 = cmd!(sock, ["XACK", "jobs", "g", id])
+  end
+
+  # --- Connection-maintenance commands ---
+
+  test "COMMAND returns empty array", %{port: port} do
+    sock = connect(port)
+    assert [] = cmd!(sock, ["COMMAND"])
+    assert [] = cmd!(sock, ["COMMAND", "COUNT"])
+    assert [] = cmd!(sock, ["COMMAND", "DOCS", "XADD"])
+  end
+
+  test "SELECT is accepted as no-op", %{port: port} do
+    sock = connect(port)
+    assert {:simple, "OK"} = cmd!(sock, ["SELECT", "0"])
+  end
+
+  test "RESET resets negotiated protocol back to RESP2", %{port: port} do
+    sock = connect(port)
+    cmd!(sock, ["HELLO", "3"])
+    assert {:simple, "RESET"} = cmd!(sock, ["RESET"])
+
+    # After reset, non-blocking empty XREADGROUP should return RESP2 null (not RESP3 map)
+    result = cmd!(sock, ["XREADGROUP", "GROUP", "g", "w",
+                         "COUNT", "1", "STREAMS", "never-used-q", ">"])
+    assert is_nil(result)
+  end
+
+  test "non-blocking empty XREADGROUP returns nil", %{port: port} do
+    sock = connect(port)
+    # No BLOCK - returns immediately with null when queue is empty
+    result = cmd!(sock, ["XREADGROUP", "GROUP", "g", "w",
+                         "COUNT", "1", "STREAMS", "empty-q", ">"])
+    assert is_nil(result)
+  end
+
   # --- XINFO / observability ---
 
   test "XINFO STREAM after workflow returns correct counts", %{port: port} do
@@ -186,6 +250,28 @@ defmodule Ezra.Integration.ClientCompatTest do
     info = cmd!(sock, ["XINFO", "STREAM", "q"])
     assert field(info, "length") == 2
     assert field(info, "name") == "q"
+  end
+
+  test "XINFO STREAM RESP3 returns map", %{port: port} do
+    sock = connect(port)
+    cmd!(sock, ["HELLO", "3"])
+    cmd!(sock, ["XADD", "xinfo-q", "*", "payload", "x"])
+
+    info = cmd!(sock, ["XINFO", "STREAM", "xinfo-q"])
+    assert is_map(info)
+    assert Map.get(info, "name") == "xinfo-q"
+    assert Map.get(info, "length") == 1
+  end
+
+  test "XINFO STREAM RESP2 returns flat list", %{port: port} do
+    sock = connect(port)
+    # No HELLO - raw RESP2
+    cmd!(sock, ["XADD", "xinfo-resp2", "*", "payload", "x"])
+
+    info = cmd!(sock, ["XINFO", "STREAM", "xinfo-resp2"])
+    assert is_list(info)
+    assert field(info, "name") == "xinfo-resp2"
+    assert field(info, "length") == 1
   end
 
   # --- Helpers ---
@@ -208,7 +294,8 @@ defmodule Ezra.Integration.ClientCompatTest do
     end
   end
 
-  # Extract a value from a flat [key, val, key, val, ...] list.
+  # Extract a value from either a RESP3 map or a flat [key, val, ...] list.
+  defp field(data, key) when is_map(data), do: Map.get(data, key)
   defp field(list, key) do
     idx = Enum.find_index(list, &(&1 == key))
     if idx, do: Enum.at(list, idx + 1), else: nil

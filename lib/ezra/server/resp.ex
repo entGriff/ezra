@@ -102,6 +102,32 @@ defmodule Ezra.Server.RESP do
       ["CLIENT", "SETNAME", _] ->
         {:client_setname}
 
+      # CLIENT NO-EVICT / NO-TOUCH - node-redis sends these on every connect
+      ["CLIENT", "NO-EVICT" | _] ->
+        {:client_no_evict}
+
+      ["CLIENT", "NO-TOUCH" | _] ->
+        {:client_no_touch}
+
+      # CLIENT GETNAME / ID - debugging / introspection sub-commands
+      ["CLIENT", "GETNAME"] ->
+        {:client_getname}
+
+      ["CLIENT", "ID"] ->
+        {:client_id}
+
+      # COMMAND [DOCS|INFO|COUNT|...] - clients probe for command availability
+      ["COMMAND" | _] ->
+        {:command}
+
+      # RESET - resets connection state (Redis 6.2+); some connection pools send it
+      ["RESET"] ->
+        {:reset}
+
+      # SELECT n - accepted as no-op (EZRA has no databases)
+      ["SELECT" | _] ->
+        {:select}
+
       # INFO [section] - ioredis sends this on connect as a ready-check
       ["INFO" | _] ->
         {:info}
@@ -167,10 +193,10 @@ defmodule Ezra.Server.RESP do
   # 2-arg form defaults to RESP2 (used by tests and non-HELLO connections).
   def encode_pop_response(queue, task), do: encode_pop_response(queue, task, 2)
 
-  # RESP3: outer container is a map so redis-py can call .items() on it.
-  # Field lists stay as flat arrays - parse_stream_list handles both formats.
-  def encode_pop_response(queue, nil, proto) when proto >= 3 do
-    encode(%{queue => []})
+  # RESP3 null for empty/timeout: redis-py's RESP3 parser does not treat $-1 as
+  # null (that's RESP2-only). It must receive the native RESP3 null type (_\r\n).
+  def encode_pop_response(_queue, nil, proto) when proto >= 3 do
+    encode(:null)
   end
 
   def encode_pop_response(queue, task, proto) when proto >= 3 do
@@ -182,9 +208,9 @@ defmodule Ezra.Server.RESP do
     encode(%{queue => [[task.id, fields]]})
   end
 
-  # RESP2: flat nested array [[stream, [[id, fields]]]]
-  def encode_pop_response(queue, nil, _proto) do
-    encode([[queue, []]])
+  # RESP2: null means no messages - return null so workers see an empty result
+  def encode_pop_response(_queue, nil, _proto) do
+    encode(nil)
   end
 
   def encode_pop_response(queue, task, _proto) do
@@ -196,8 +222,10 @@ defmodule Ezra.Server.RESP do
     encode([[queue, [[task.id, fields]]]])
   end
 
-  # Blocking XREADGROUP timeout → null (redis-py checks for None)
-  def encode_block_timeout(), do: encode(nil)
+  # Blocking XREADGROUP timeout → null. RESP3 parser requires native null (_\r\n);
+  # it does not handle $-1 as null the way the RESP2 parser does.
+  def encode_block_timeout(proto) when proto >= 3, do: encode(:null)
+  def encode_block_timeout(_proto), do: encode(nil)
 
   # XACK → integer 1 (acked) or 0 (not found)
   def encode_xack_response(:ok), do: encode(1)
@@ -206,27 +234,35 @@ defmodule Ezra.Server.RESP do
   # XLEN → integer depth
   def encode_xlen_response(n), do: encode(n)
 
-  # XINFO STREAM → flat array matching Redis wire format for GUI compatibility.
+  # XINFO STREAM → flat array (RESP2) or map (RESP3).
   # Includes the standard Redis fields so clients like RedisInsight parse cleanly.
-  def encode_xinfo_response(%{queue: queue, length: length, dead: dead} = info) do
+  def encode_xinfo_response(info), do: encode_xinfo_response(info, 2)
+
+  def encode_xinfo_response(%{queue: queue, length: length, dead: dead} = info, proto) do
     last_id = Map.get(info, :last_id)
     last_id_str = if last_id, do: Integer.to_string(last_id), else: "0-0"
-    total = length
+    null_val = if proto >= 3, do: :null, else: nil
 
-    encode([
-      "name",                    queue,
-      "length",                  total,
-      "radix-tree-keys",         0,
-      "radix-tree-nodes",        1,
-      "last-generated-id",       last_id_str,
-      "max-deleted-entry-id",    "0-0",
-      "entries-added",           total,
-      "recorded-first-entry-id", "0-0",
-      "groups",                  1,
-      "dead-letter-length",      dead,
-      "first-entry",             nil,
-      "last-entry",              nil
-    ])
+    pairs = [
+      {"name",                    queue},
+      {"length",                  length},
+      {"radix-tree-keys",         0},
+      {"radix-tree-nodes",        1},
+      {"last-generated-id",       last_id_str},
+      {"max-deleted-entry-id",    "0-0"},
+      {"entries-added",           length},
+      {"recorded-first-entry-id", "0-0"},
+      {"groups",                  1},
+      {"dead-letter-length",      dead},
+      {"first-entry",             null_val},
+      {"last-entry",              null_val}
+    ]
+
+    if proto >= 3 do
+      encode(Map.new(pairs))
+    else
+      encode(Enum.flat_map(pairs, fn {k, v} -> [k, v] end))
+    end
   end
 
   # HELLO response format depends on the requested version:

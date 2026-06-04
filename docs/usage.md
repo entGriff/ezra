@@ -21,33 +21,37 @@ Client connection examples, full usage guide, Docker deployment, and binary conf
 
 ## Connect
 
-Use the Redis client your language already has - just point it at EZRA's port.
+Use the Redis client your language already has - just point it at EZRA's port. EZRA speaks RESP3; set `protocol=3` (or equivalent) to get native map responses from `xreadgroup`.
 
-**Python**
+**Python** (redis-py ≥ 5.0)
 
 ```python
 import redis
-r = redis.Redis(host="localhost", port=42002, decode_responses=True)
+r = redis.Redis(host="localhost", port=42002, decode_responses=True, protocol=3)
 ```
 
-**Node.js**
+**Node.js** (node-redis)
 
 ```js
 import { createClient } from "redis"
 const r = await createClient({ url: "redis://localhost:42002" }).connect()
+// node-redis negotiates RESP3 by default
 ```
 
-**Go**
+**Go** (go-redis)
 
 ```go
 rdb := redis.NewClient(&redis.Options{Addr: "localhost:42002"})
+// go-redis negotiates RESP3 by default
 ```
 
-**Ruby**
+**Ruby** (redis-client gem)
 
 ```ruby
-r = Redis.new(host: "localhost", port: 42002)
+r = RedisClient.new(host: "localhost", port: 42002, protocol: 3)
 ```
+
+RESP2 clients (older libraries, ioredis) connect without any changes - they just skip the HELLO handshake and get RESP2 responses.
 
 ---
 
@@ -70,8 +74,7 @@ task_id = r.xadd("emails", {"payload": json.dumps({"to": "alice@example.com"})})
 results = r.xreadgroup("workers", "worker-1", {"emails": ">"}, count=1, block=30_000)
 
 if results:
-    stream, entries = results[0]
-    msg_id, fields = entries[0]
+    msg_id, fields = results["emails"][0]
 
     send_email(json.loads(fields["payload"]))
     r.xack("emails", "workers", msg_id)
@@ -96,13 +99,12 @@ Use `BLOCK 0` to wait indefinitely. The worker stays connected and receives task
 ```python
 import json, redis
 
-r = redis.Redis(host="localhost", port=42002, decode_responses=True)
+r = redis.Redis(host="localhost", port=42002, decode_responses=True, protocol=3)
 
 while True:
     results = r.xreadgroup("workers", "worker-1", {"emails": ">"}, count=1, block=0)
     if results:
-        stream, entries = results[0]
-        msg_id, fields = entries[0]
+        msg_id, fields = results["emails"][0]
 
         try:
             send_email(json.loads(fields["payload"]))

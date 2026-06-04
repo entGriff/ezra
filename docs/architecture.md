@@ -140,19 +140,38 @@ flowchart TD
 
 ## Wire protocol
 
-EZRA implements the Redis Streams subset of RESP2. Any Redis client works without modification.
+EZRA implements the Redis Streams subset of RESP3. Any Redis client works without modification - clients that negotiate HELLO 3 get native RESP3 types; older clients that skip the handshake get RESP2 responses.
+
+**Stream commands**
 
 | Command                                                                    | Semantics                                                                                           |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `XADD <queue> * payload <data>`                                            | Push a task. Creates the queue on first use.                                                        |
-| `XREADGROUP GROUP <g> <consumer> COUNT <n> [BLOCK <ms>] STREAMS <queue> >` | Pop up to `n` tasks. Blocks up to `ms` ms if queue is empty.                                        |
+| `XREADGROUP GROUP <g> <consumer> COUNT <n> [BLOCK <ms>] STREAMS <queue> >` | Pop up to `n` tasks. Blocks up to `ms` ms if queue is empty.                                       |
 | `XACK <queue> <group> <id>`                                                | Acknowledge. Marks task `done`.                                                                     |
 | `XDEL <queue> <id>`                                                        | Nack via standard Redis command. Returns task for retry; moves to dead if attempts are exhausted. EZRA repurposes this - it does not hard-delete. |
 | `XNACK <queue> <group> <id>`                                               | Same as XDEL. For clients whose SDK supports sending arbitrary commands directly.                   |
-| `CLIENT SETNAME <name>`                                                    | Accepted as a no-op. Allows any Redis SDK to connect without errors.                                |
 | `XGROUP CREATE <queue> <group> $ MKSTREAM`                                 | Pre-create a queue. Optional - XADD does it automatically.                                          |
 | `XLEN <queue>`                                                             | Count of `available` tasks.                                                                         |
-| `XINFO STREAM <queue>`                                                     | Full queue stats: depth, in-flight, dead, last entry.                                               |
+| `XINFO STREAM <queue>`                                                     | Queue stats: depth, dead-letter count, last entry.                                                  |
+
+**Connection management**
+
+These are accepted so any Redis SDK can connect without errors. EZRA does not implement their Redis semantics.
+
+| Command                          | Response                                      |
+| -------------------------------- | --------------------------------------------- |
+| `HELLO [2\|3]`                   | Server info map/list; negotiates RESP version. |
+| `PING [message]`                 | `PONG` or echoes the message.                 |
+| `CLIENT SETNAME <name>`          | `OK`                                          |
+| `CLIENT NO-EVICT ON\|OFF`        | `OK`                                          |
+| `CLIENT NO-TOUCH ON\|OFF`        | `OK`                                          |
+| `CLIENT GETNAME`                 | null (name tracking not implemented)          |
+| `CLIENT ID`                      | `0`                                           |
+| `COMMAND [DOCS\|INFO\|COUNT\|…]` | empty array                                   |
+| `RESET`                          | `RESET` (resets negotiated protocol to RESP2) |
+| `SELECT <n>`                     | `OK` (EZRA has no databases)                  |
+| `INFO [section]`                 | minimal server info stub                      |
 
 ---
 
@@ -310,7 +329,7 @@ end, nil)
 | `Ezra.Storage.Migrations` | Versioned SQL migration definitions. Applied on startup. Never destructive.      |
 | `Ezra.Server.Supervisor`  | Started only when `port:` is set. Owns the TCP listener and connection pool.     |
 | `Ezra.Server.Connection`  | One per TCP connection. Parses RESP → Engine → encodes → sends.                  |
-| `Ezra.Server.RESP`        | Pure module. Stateless RESP2 encoder/decoder. No side effects.                   |
+| `Ezra.Server.RESP`        | Pure module. Stateless RESP2/RESP3 encoder/decoder. No side effects.             |
 | `Ezra.CLI`                | Parses flags and env vars for standalone mode.                                   |
 | `Ezra.Application`        | OTP entry point. Detects standalone vs library mode.                             |
 

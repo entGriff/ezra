@@ -98,6 +98,20 @@ defmodule Ezra.Server.Connection do
     RESP.encode_ok()
   end
 
+  defp dispatch({:client_no_evict}, _state), do: RESP.encode_ok()
+  defp dispatch({:client_no_touch}, _state), do: RESP.encode_ok()
+  defp dispatch({:client_getname}, _state),  do: RESP.encode(nil)
+  defp dispatch({:client_id}, _state),       do: RESP.encode(0)
+
+  # COMMAND - return empty array; clients use this to discover available commands
+  defp dispatch({:command}, _state), do: RESP.encode([])
+
+  # RESET - resets connection to default state (proto 2, no auth, etc.)
+  defp dispatch({:reset}, _state), do: RESP.encode({:simple, "RESET"})
+
+  # SELECT - no-op; EZRA has no databases
+  defp dispatch({:select}, _state), do: RESP.encode_ok()
+
   defp dispatch({:info}, _state) do
     RESP.encode_info()
   end
@@ -121,7 +135,7 @@ defmodule Ezra.Server.Connection do
         RESP.encode_pop_response(queue, task, state.proto)
 
       {:empty} when block_ms > 0 ->
-        RESP.encode_block_timeout()
+        RESP.encode_block_timeout(state.proto)
 
       {:empty} ->
         RESP.encode_pop_response(queue, nil, state.proto)
@@ -171,7 +185,7 @@ defmodule Ezra.Server.Connection do
 
   defp dispatch({:xinfo_stream, queue}, state) do
     info = Engine.xinfo_stream(state.engine, queue)
-    RESP.encode_xinfo_response(info)
+    RESP.encode_xinfo_response(info, state.proto)
   end
 
   defp dispatch({:unknown, []}, _state) do
@@ -186,8 +200,9 @@ defmodule Ezra.Server.Connection do
 
   # Store the negotiated protocol version so XREADGROUP can pick the right
   # response encoding.
-  defp update_proto(state, {:hello, v}), do: %{state | proto: v}
-  defp update_proto(state, _), do: state
+  defp update_proto(state, {:hello, v}),  do: %{state | proto: v}
+  defp update_proto(state, {:reset}),    do: %{state | proto: 2}
+  defp update_proto(state, _),           do: state
 
   defp parse_id(str) do
     case Integer.parse(str) do
