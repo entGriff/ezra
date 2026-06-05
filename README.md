@@ -68,7 +68,7 @@ while True:
     results = r.xreadgroup("workers", "worker-1", {"emails": ">"}, count=1, block=0)
 
     if results:
-        for task_id, fields in results["emails"]:
+        for task_id, fields in results["emails"][0]:
             send_email(fields["payload"])  # your processing code here
 
             # Acknowledge success. Without this, Ezra re-delivers the task after the
@@ -77,6 +77,8 @@ while True:
 ```
 
 Any language with a Redis client works the same way - Python, Node.js, Go, Ruby, Java. Point the client at port 42002 instead of Redis.
+
+For runnable Docker Compose demos in Python and Node.js, see **[github.com/entGriff/ezra-examples](https://github.com/entGriff/ezra-examples/)**.
 
 ---
 
@@ -250,6 +252,7 @@ See [docs/elixir-client.md](docs/elixir-client.md) for the full guide.
 
 ## Further reading
 
+- [github.com/entGriff/ezra-examples](https://github.com/entGriff/ezra-examples/) - runnable Docker Compose demos (Python, Node.js)
 - [docs/usage.md](docs/usage.md) - language clients, full usage examples, Docker, options reference, systemd
 - [docs/architecture.md](docs/architecture.md) - storage schema, module map, wire protocol, telemetry
 - [docs/elixir-client.md](docs/elixir-client.md) - Elixir library mode reference

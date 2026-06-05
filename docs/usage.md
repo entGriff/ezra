@@ -74,10 +74,9 @@ task_id = r.xadd("emails", {"payload": json.dumps({"to": "alice@example.com"})})
 results = r.xreadgroup("workers", "worker-1", {"emails": ">"}, count=1, block=30_000)
 
 if results:
-    msg_id, fields = results["emails"][0]
-
-    send_email(json.loads(fields["payload"]))
-    r.xack("emails", "workers", msg_id)
+    for msg_id, fields in results["emails"][0]:
+        send_email(json.loads(fields["payload"]))
+        r.xack("emails", "workers", msg_id)
 ```
 
 To report failure explicitly instead of waiting for the visibility timeout to reclaim the task:
@@ -104,13 +103,12 @@ r = redis.Redis(host="localhost", port=42002, decode_responses=True, protocol=3)
 while True:
     results = r.xreadgroup("workers", "worker-1", {"emails": ">"}, count=1, block=0)
     if results:
-        msg_id, fields = results["emails"][0]
-
-        try:
-            send_email(json.loads(fields["payload"]))
-            r.xack("emails", "workers", msg_id)
-        except Exception:
-            r.xdel("emails", msg_id)  # immediate retry; or just `pass` to let visibility_timeout retry
+        for msg_id, fields in results["emails"][0]:
+            try:
+                send_email(json.loads(fields["payload"]))
+                r.xack("emails", "workers", msg_id)
+            except Exception:
+                r.xdel("emails", msg_id)  # immediate retry; or just `pass` to let visibility_timeout retry
 ```
 
 Each worker process should use a distinct name (`worker-1`, `worker-2`, etc.). EZRA uses this to track which tasks are in-flight for which worker.

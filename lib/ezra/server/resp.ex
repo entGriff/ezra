@@ -187,8 +187,8 @@ defmodule Ezra.Server.RESP do
   #   redis-py calls parse_stream / parse_xread on this.
   #
   # RESP3 (proto >= 3): map %{stream => [[id, fields]]}
-  #   redis-py calls parse_xread_resp3_to_resp2_legacy on this, which
-  #   expects a dict with .items(). Returns same logical structure to caller.
+  #   redis-py calls parse_xread_resp3 which iterates .items() and wraps
+  #   the message list in an extra []. Caller iterates with (messages,) unpacking.
   #
   # 2-arg form defaults to RESP2 (used by tests and non-HELLO connections).
   def encode_pop_response(queue, task), do: encode_pop_response(queue, task, 2)
