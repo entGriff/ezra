@@ -107,6 +107,14 @@ defmodule Ezra.Queue.EngineTest do
 
       assert {:ok, task} = Task.await(worker, 3_000)
       assert task.payload == "hello"
+
+      # Waiter path must set status=in_flight and increment attempts,
+      # same as the regular pop path. Without this, ack silently fails
+      # and the task is re-delivered to the next worker.
+      assert task.status == "in_flight"
+      assert task.attempts == 1
+      assert Engine.ack(e, task.id) == :ok
+      assert Engine.pop(e, "async_q", worker_id: "w2") == {:empty}
     end
 
     test "concurrent pops each claim a distinct task", %{engine: e} do

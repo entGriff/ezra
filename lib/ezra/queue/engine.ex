@@ -377,7 +377,7 @@ defmodule Ezra.Queue.Engine do
 
     rows = SQLite.query!(db, """
       UPDATE tasks
-      SET claimed_at = ?1, worker_id = ?2
+      SET claimed_at = ?1, worker_id = ?2, status = 'in_flight', attempts = attempts + 1
       WHERE id = ?3
       RETURNING #{Task.select_columns()}
     """, [now, worker_id, task_id])
