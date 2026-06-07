@@ -14,7 +14,7 @@ Client connection examples, full usage guide, Docker deployment, and binary conf
 - [Queue stats](#queue-stats)
 - [Dead-letter queue](#dead-letter-queue)
 - [Docker](#docker)
-- [Binary options](#binary-options)
+- [Server configuration](#server-configuration)
 - [With systemd](#with-systemd)
 
 ---
@@ -197,7 +197,7 @@ docker rm -f ezra    # destroy container (data volume survives)
 
 ---
 
-## Binary options
+## Server configuration
 
 All flags can also be set via environment variables. Environment variables take effect when the flag is not provided.
 
