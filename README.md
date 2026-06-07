@@ -21,7 +21,10 @@ Each task stays visible and explicitly tracked until a worker marks it finished 
 - [Why does this exist?](#why-does-this-exist)
 - [How it works](#how-it-works)
 - [Task lifecycle](#task-lifecycle)
+- [When things go wrong](#when-things-go-wrong)
 - [Multiple workers and producers](#multiple-workers-and-producers)
+- [Trade-offs](#trade-offs)
+- [Is EZRA right for you?](#is-ezra-right-for-you)
 - [Install](#install)
 - [Run](#run)
 - [Elixir](#elixir)
@@ -102,19 +105,11 @@ Throughput is bounded by SQLite write speed, which depends on the disk. The engi
 
 ## Why does this exist?
 
-Your user sends any requests to your API which needs to be processed, let's say uploads PDF. You can do some processing inline in the request handler, but then your API blocks for 10 seconds, the user stares at a spinner, and if your process restarts mid-job, or you will release new deployment the work is silently lost.
+At some point almost all app needs to do work outside the request cycle - send an email, generate a PDF, call a slow API. You want to return to the user immediately, process it in the background, retry if it fails, and not lose it when the server restarts. That is where task queue helps.
 
-You also are not able to upscale only the processing part, you need to upscale the entire API cause it is tightly coupled with the request handling logic.
+There are some battle tested options, but they come with real overhead and overengineering if you do not have 1 million RPS: clusters to provision, dedicated servers to maintain, operational knowledge to acquire, or a dependency on a cloud provider. Most teams end up skipping persistent queuing entirely and using in-memory jobs that silently lose work on restart.
 
-A task queue fixes this: the upload handler pushes a task and returns immediately. A separate worker picks it up, does the heavy lifting, and confirms when done. Tasks survive restarts. Failures retry automatically.
-
-There are amazing queues out there - Kafka, RabbitMQ, ActiveMQ, SQS, and many more. But most of them are resource-heavy, expensive, and time-consuming to run properly. You need a cluster, dedicated machines, and someone or sometimes a team who understands the operational model well enough to set it up properly and recover the system when things break. Managed options cut the ops burden but add a monthly subscription and lock you into one cloud vendor.
-
-The result: most teams skip persistent queuing entirely and use in-memory jobs that quietly lose work on restart and are fragile. The trade-off exists because the alternative felt too heavy.
-
-EZRA is the alternative that does not feel heavy. One binary, no cluster, no setup. It stores everything in a SQLite file on the same machine it runs on. Workers connect with whatever Redis client your team already has, in any language. No broker to babysit, no cluster to setup, no topics to define, no queue to configure before you can use it.
-
-One binary - you just run it and can actually touch the data anytime you want.
+EZRA is the alternative that does not feel heavy. One binary, one SQLite file, any Redis client in any language. No broker, no cluster, no pre-configuration. Run it and you can open the database in any SQLite browser and see exactly what is in the queue.
 
 ---
 
@@ -146,9 +141,21 @@ stateDiagram-v2
     dead --> [*] : readable via queue&#58;&#58;dead
 ```
 
-**Tasks are never silently lost.** A task stays in the queue until a worker explicitly says it is done. If EZRA itself restarts, all in-flight tasks return to available automatically.
+**Tasks are never silently lost.** A task stays in the queue until a worker explicitly says it is done. If EZRA restarts, in-flight tasks are returned to `available` immediately on startup before any new work is accepted.
 
 **After a nack, can the same worker get the same task again?** Yes. When a task is nacked it returns to `available` and the next pop - from any worker, including the same one - can claim it. If you want to avoid tight retry loops, add a short sleep in your worker between a failure and the next pop. The `last_error` field stores the nack reason for inspection.
+
+---
+
+## When things go wrong
+
+**Worker crashes or disconnects mid-task.** The task stays `in_flight`. The scheduler reclaims it after `visibility_timeout` seconds (default: 30) and puts it back in `available`, incrementing `attempts`.
+
+**EZRA itself crashes.** Workers see a TCP disconnect. On restart, EZRA immediately resets all in-flight tasks back to `available` before accepting new connections. A task that was mid-processing when the crash happened may run again - this is at-least-once delivery by design, not a failure mode. No tasks are lost.
+
+**Task fails repeatedly.** After `max_attempts` (default: 3) the task moves to `dead` and lands in `<queue>::dead`, queryable via the same `XREADGROUP` interface. Nothing is silently dropped.
+
+**Worker is slow.** If a worker takes longer than `visibility_timeout` to ack, the task is reclaimed and redelivered to another worker. Set `visibility_timeout` per queue to match your workload - size it for the worst case, not the average.
 
 ---
 
@@ -164,6 +171,38 @@ EZRA exposes a network API over TCP. Any machine that can reach the port can pus
 Work distributes on demand: whichever worker finishes first asks for the next task and gets it immediately. Scale by running more workers - no coordination needed, no configuration changes in EZRA.
 
 **A note on SQLite and remote access.** Nobody connects to SQLite remotely. Only EZRA's internal engine touches the file, on the same machine where EZRA runs. External clients talk to EZRA over TCP. The real constraint is that EZRA itself is single-node: all data lives on the one machine where it runs.
+
+---
+
+## Trade-offs
+
+- **Single node.** All data lives on one machine. If that machine is unavailable, the queue is unavailable. The data itself is safe - SQLite is a plain file, easy to back up or replicate via any standard file-sync tool (rsync, litestream, filesystem snapshots). Uptime depends on the host, not EZRA.
+- **At-least-once, not exactly-once.** A task can run more than once if the visibility timeout expires before the worker acks. This is a deliberate design choice - exactly-once delivery across a network is not something a queue can guarantee without distributed transaction coordination on both sides. Size your `visibility_timeout` correctly and design workers to handle duplicates.
+- **Visibility timeout is not instant.** A crashed worker's tasks are reclaimed after `visibility_timeout` seconds, not immediately on disconnect. *(may be resolved in an upcoming release)*
+- **Tasks accumulate.** Done tasks are kept forever unless `retention_seconds` is set on the queue. Without it the database grows without bound.
+- **No fanout.** One task goes to exactly one worker. For broadcast patterns, push one task per subscriber.
+- **No priority queues.** Workaround: separate queue names (`jobs.high`, `jobs.low`) with workers consuming both.
+- **No delayed tasks.** Tasks are available immediately on push. Scheduled delivery is not supported. *(may be resolved in an upcoming release)*
+- **100KB recommended payload limit.** SQLite handles larger BLOBs but performance degrades. Store large data externally and put a reference in the payload.
+- **No cross-queue transactions.** Pushing to two queues atomically is not supported.
+
+---
+
+## Is EZRA right for you?
+
+**Good fit**
+- Background jobs: email delivery, PDF generation, image resizing, webhooks
+- Any async work that needs reliability but not sub-millisecond latency
+- Polyglot teams - each service uses its own language, all share one queue
+- Early-stage products where running Kafka or RabbitMQ is disproportionate
+- Single-machine or single-VM deployments where SQLite's single-node constraint is acceptable
+
+**Poor fit**
+- Multi-node high availability with no downtime window
+- Pub/sub or fanout patterns where the same message must reach multiple consumers
+- Throughput beyond SQLite's write ceiling (~30-80k/sec depending on disk)
+- Event sourcing or audit logs where the stream itself is the primary data model
+- Complex routing, filtering, or transformation at the broker level
 
 ---
 

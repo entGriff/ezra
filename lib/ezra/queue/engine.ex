@@ -139,6 +139,15 @@ defmodule Ezra.Queue.Engine do
       max_attempts: Keyword.get(opts, :default_max_attempts, 3),
       retention_seconds: Keyword.get(opts, :default_retention_seconds, nil)
     }
+
+    # All prior worker connections are gone. Tasks left in_flight from a
+    # previous run will never be acked, so return them to available now
+    # rather than waiting for the visibility timeout sweep.
+    SQLite.query!(db, """
+      UPDATE tasks SET status = 'available', claimed_at = NULL, worker_id = NULL
+      WHERE status = 'in_flight'
+    """, [])
+
     {:ok, %{db: db, waiters: %{}, name: name, defaults: defaults}}
   end
 

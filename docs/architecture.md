@@ -105,7 +105,7 @@ flowchart TD
     F --> G{"waiters for queue?"}
     G -- yes --> H["reply to waiting worker"]
     G -- no --> I["task sits as 'available'"]
-    E --> J["{:ok, '123-0'}"]
+    E --> J["{:ok, '42'}"]
     J --> K["RESP.encode/1"]
     K --> L[TCP socket send]
 ```
