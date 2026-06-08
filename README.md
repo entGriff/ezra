@@ -109,7 +109,8 @@ Throughput is bounded by SQLite write speed, which depends on the disk. The engi
 
 ---
 
-## Why does this exist?
+<details>
+<summary><strong>Why does this exist?</strong></summary>
 
 At some point almost all app needs to do work outside the request cycle - send an email, generate a PDF, call a slow API. You want to return to the user immediately, process it in the background, retry if it fails, and not lose it when the server restarts. That is where task queue helps.
 
@@ -117,9 +118,12 @@ There are some battle tested options, but they come with real overhead and overe
 
 EZRA is the alternative that does not feel heavy. One binary, one SQLite file, any Redis client in any language. No broker, no cluster, no pre-configuration. Run it and you can open the database in any SQLite browser and see exactly what is in the queue.
 
+</details>
+
 ---
 
-## How it works
+<details>
+<summary><strong>How it works</strong></summary>
 
 EZRA speaks **RESP3** - the same wire protocol Redis uses. Every Redis client library in every language already knows how to speak it. Point the client at EZRA's port instead of Redis and it works without modification.
 
@@ -133,9 +137,12 @@ The specific commands EZRA implements come from **Redis Streams** - the part of 
 
 Everything else Redis supports (`GET`, `SET`, pub/sub, etc.) returns an error. EZRA is not trying to be Redis.
 
+</details>
+
 ---
 
-## Task lifecycle
+<details>
+<summary><strong>Task lifecycle</strong></summary>
 
 ```mermaid
 stateDiagram-v2
@@ -151,9 +158,12 @@ stateDiagram-v2
 
 **After a nack, can the same worker get the same task again?** Yes. When a task is nacked it returns to `available` and the next pop - from any worker, including the same one - can claim it. If you want to avoid tight retry loops, add a short sleep in your worker between a failure and the next pop. The `last_error` field stores the nack reason for inspection.
 
+</details>
+
 ---
 
-## When things go wrong
+<details>
+<summary><strong>When things go wrong</strong></summary>
 
 **Worker crashes or disconnects mid-task.** The task stays `in_flight`. The scheduler reclaims it after `visibility_timeout` seconds (default: 30) and puts it back in `available`, incrementing `attempts`.
 
@@ -163,9 +173,12 @@ stateDiagram-v2
 
 **Worker is slow.** If a worker takes longer than `visibility_timeout` to ack, the task is reclaimed and redelivered to another worker. Set `visibility_timeout` per queue to match your workload - size it for the worst case, not the average.
 
+</details>
+
 ---
 
-## Multiple workers and producers
+<details>
+<summary><strong>Multiple workers and producers</strong></summary>
 
 EZRA exposes a network API over TCP. Any machine that can reach the port can push tasks or pop them. No registration, no configuration per client - just connect and use. See [The big picture](#the-big-picture) for a visual overview.
 
@@ -178,9 +191,12 @@ Work distributes on demand: whichever worker finishes first asks for the next ta
 
 **A note on SQLite and remote access.** Nobody connects to SQLite remotely. Only EZRA's internal engine touches the file, on the same machine where EZRA runs. External clients talk to EZRA over TCP. The real constraint is that EZRA itself is single-node: all data lives on the one machine where it runs.
 
+</details>
+
 ---
 
-## Trade-offs
+<details>
+<summary><strong>Trade-offs</strong></summary>
 
 - **Single node.** All data lives on one machine. If that machine is unavailable, the queue is unavailable. The data itself is safe - SQLite is a plain file, easy to back up or replicate via any standard file-sync tool (rsync, litestream, filesystem snapshots). Uptime depends on the host, not EZRA.
 - **At-least-once, not exactly-once.** A task can run more than once if the visibility timeout expires before the worker acks. This is a deliberate design choice - exactly-once delivery across a network is not something a queue can guarantee without distributed transaction coordination on both sides. Size your `visibility_timeout` correctly and design workers to handle duplicates.
@@ -192,9 +208,12 @@ Work distributes on demand: whichever worker finishes first asks for the next ta
 - **100KB recommended payload limit.** SQLite handles larger BLOBs but performance degrades. Store large data externally and put a reference in the payload.
 - **No cross-queue transactions.** Pushing to two queues atomically is not supported.
 
+</details>
+
 ---
 
-## Is EZRA right for you?
+<details>
+<summary><strong>Is EZRA right for you?</strong></summary>
 
 **Good fit**
 - Background jobs: email delivery, PDF generation, image resizing, webhooks
@@ -210,9 +229,12 @@ Work distributes on demand: whichever worker finishes first asks for the next ta
 - Event sourcing or audit logs where the stream itself is the primary data model
 - Complex routing, filtering, or transformation at the broker level
 
+</details>
+
 ---
 
-## Install
+<details>
+<summary><strong>Install</strong></summary>
 
 > Prebuilt binaries: [github.com/entGriff/ezra/releases](https://github.com/entGriff/ezra/releases)
 >
@@ -234,9 +256,12 @@ chmod +x ezra
 
 No runtime required. The binary is self-contained (~20 MB).
 
+</details>
+
 ---
 
-## Run
+<details>
+<summary><strong>Run</strong></summary>
 
 ```bash
 ./ezra --data-dir /var/ezra
@@ -254,9 +279,12 @@ Send `SIGTERM` or press `Ctrl+C` to stop. EZRA finishes any in-progress operatio
 
 For the full options reference, Docker deployment examples, language client snippets, and systemd setup see [docs/usage.md](docs/usage.md).
 
+</details>
+
 ---
 
-## Elixir
+<details>
+<summary><strong>Elixir</strong></summary>
 
 If you are building an Elixir application, EZRA can run embedded inside your own process - no TCP hop for your own workers.
 
@@ -279,9 +307,12 @@ children = [
 
 See [docs/elixir-client.md](docs/elixir-client.md) for the full guide.
 
+</details>
+
 ---
 
-## Terminology
+<details>
+<summary><strong>Terminology</strong></summary>
 
 **push** - add a new task to a queue.
 
@@ -292,6 +323,8 @@ See [docs/elixir-client.md](docs/elixir-client.md) for the full guide.
 **nack** (negative acknowledge) - tell EZRA "I failed." EZRA puts it back for another worker to try, up to `max_attempts` times.
 
 **in_flight** - a task that has been popped but not yet acknowledged. If the worker goes silent, EZRA reclaims it after `visibility_timeout` seconds.
+
+</details>
 
 ---
 
