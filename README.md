@@ -11,10 +11,10 @@ EZRA is a persistent task queue. Multiple services push tasks in, multiple worke
 Each task stays visible and explicitly tracked until a worker marks it finished - no silent drops, no fire-and-forget. Backed by SQLite, powered by the Erlang/OTP runtime. Workers connect with any Redis client (Redis itself is not needed) in any language - no new SDK required.
 
 > **This project is maintained by a single author and pull requests are not accepted. Issues for bugs or questions are welcome.**
-
+### Demo:
 <p align="center">
   <a href="https://www.youtube.com/watch?v=MLYyD3DVWmE">
-    <img src="https://img.youtube.com/vi/MLYyD3DVWmE/maxresdefault.jpg" alt="EZRA demo video" width="640">
+    <img src="https://github.com/user-attachments/assets/25768159-e5d0-47d6-8ea7-942a4065b4e9" alt="EZRA demo video" width="640">
   </a>
 </p>
 
