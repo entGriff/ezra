@@ -12,6 +12,12 @@ Each task stays visible and explicitly tracked until a worker marks it finished 
 
 > **This project is maintained by a single author and pull requests are not accepted. Issues for bugs or questions are welcome.**
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=MLYyD3DVWmE">
+    <img src="https://img.youtube.com/vi/MLYyD3DVWmE/maxresdefault.jpg" alt="EZRA demo video" width="640">
+  </a>
+</p>
+
 ---
 
 ## Contents
